@@ -34,8 +34,42 @@ const SCHEMA = [
   "CREATE INDEX IF NOT EXISTS xl_docs_updated ON xl_docs (updated_at)",
   "CREATE TABLE IF NOT EXISTS xl_accounts (uid TEXT PRIMARY KEY, created_at INTEGER NOT NULL, netday TEXT NOT NULL, country TEXT)",
   "CREATE INDEX IF NOT EXISTS xl_accounts_netday ON xl_accounts (netday)",
-  "CREATE TABLE IF NOT EXISTS xl_leases (key TEXT PRIMARY KEY, holder TEXT NOT NULL, expires INTEGER NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS xl_leases (key TEXT PRIMARY KEY, holder TEXT NOT NULL, expires INTEGER NOT NULL)",
+  // World economy, kept by the server so no citizen can change it: global counters, open QuarX seams, mining log, BuX mints
+  "CREATE TABLE IF NOT EXISTS xl_world (k TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0)",
+  "CREATE TABLE IF NOT EXISTS xl_seams (uid TEXT PRIMARY KEY, started INTEGER NOT NULL, ends INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS xl_minelog (uid TEXT NOT NULL, at INTEGER NOT NULL, amount INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS xl_minelog_at ON xl_minelog (at)",
+  "CREATE TABLE IF NOT EXISTS xl_mints (uid TEXT PRIMARY KEY, amount INTEGER NOT NULL, at INTEGER NOT NULL)"
 ];
+
+/* ---------------- World economy (server-authoritative) ----------------
+   Amounts are in base units: 1 QuarX = 1 BuX = 10,000 units (the page uses the same DEC = 4).
+   QuarX: hard cap 1,000,000,000. A quarter is the genesis reserve (Forerunner Vaults); the other 750,000,000 can only
+   be mined in Xalp. Mining epochs halve: epoch 1 releases half of the minable supply, epoch 2 a quarter, and so on, and
+   the reward per seam halves with each epoch. Difficulty: seams take longer when more citizens mine than the target.
+   BuX: 1 BuX = 1 USD, minted only against a stablecoin deposit that stays locked in the BanX reserve for good.
+   The page mirrors these rules (ECONOMY in index.html) for display and for its rule tests. */
+const UNIT = 10000;
+const ECON = { quarxCap: 1e9, genesis: 2.5e8, seamReward: 1, seamSecsMin: 60, seamSecsMax: 120, dailySeams: 5, targetMiners: 8, sandboxBuX: 1000 };
+const MINABLE = (ECON.quarxCap - ECON.genesis) * UNIT;
+function quarxEpoch(mined){ if(mined >= MINABLE) return Infinity; return Math.floor(-Math.log2(1 - mined / MINABLE)); }
+function seamReward(mined){ const e = quarxEpoch(mined); if(!isFinite(e)) return 0; return Math.max(1, Math.floor(ECON.seamReward * UNIT / 2 ** e)); }
+function nextHalvingAt(mined){ const e = quarxEpoch(mined); return isFinite(e) ? Math.ceil(MINABLE * (1 - 2 ** -(e + 1))) : MINABLE; }
+function difficulty(miners){ return Math.max(1, miners / ECON.targetMiners); }
+const dayStart = t => { const d = new Date(t); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
+async function worldCounter(env, k){ const r = await env.DB.prepare('SELECT n FROM xl_world WHERE k = ?1').bind(k).first(); return r ? Number(r.n) : 0; }
+async function addWorld(env, k, d){ await env.DB.prepare('INSERT INTO xl_world (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = n + excluded.n').bind(k, d).run(); }
+async function miners24h(env, now){ const r = await env.DB.prepare('SELECT COUNT(DISTINCT uid) AS n FROM xl_minelog WHERE at > ?1').bind(now - 86400000).first(); return r ? Number(r.n) : 0; }
+async function worldReport(env, now){
+  const mined = await worldCounter(env, 'quarx_mined'), miners = await miners24h(env, now);
+  return {
+    unit: UNIT,
+    quarx: { cap: ECON.quarxCap * UNIT, genesis: ECON.genesis * UNIT, minable: MINABLE, mined, epoch: quarxEpoch(mined) + 1, reward: seamReward(mined),
+      nextHalvingAt: nextHalvingAt(mined), miners24h: miners, difficulty: difficulty(miners), dailySeams: ECON.dailySeams },
+    bux: { minted: await worldCounter(env, 'bux_minted'), reserve: await worldCounter(env, 'bux_reserve') }
+  };
+}
 let schemaReady = false;
 async function ensureSchema(env){ if(schemaReady) return; for(const s of SCHEMA) await env.DB.prepare(s).run(); schemaReady = true; }
 
@@ -80,6 +114,43 @@ async function api(req, env, url){
   }
 
   if(!(await registered(env, me.uid))) return fail(401, 'Unknown citizen. Reload the page.');
+
+  if(p === '/api/world' && req.method === 'GET') return json({ok:true, now, ...(await worldReport(env, now))});
+
+  if(p === '/api/quarx/start' && req.method === 'POST'){
+    const open = await env.DB.prepare('SELECT started, ends FROM xl_seams WHERE uid = ?1').bind(me.uid).first();
+    if(open) return json({ok:true, now, start:Number(open.started), end:Number(open.ends), reward: seamReward(await worldCounter(env, 'quarx_mined'))});
+    const today = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_minelog WHERE uid = ?1 AND at >= ?2').bind(me.uid, dayStart(now)).first();
+    if(today && Number(today.n) >= ECON.dailySeams) return fail(429, `Today's extraction capacity is used up (${ECON.dailySeams} seams a day).`);
+    const mined = await worldCounter(env, 'quarx_mined'); if(seamReward(mined) <= 0) return fail(409, 'All minable QuarX has been extracted.');
+    const mult = Math.min(2, Math.max(1, Number(q.get('mult')) || 1));   // the page may only slow a seam down (cold season, events)
+    const secs = (ECON.seamSecsMin + Math.random() * (ECON.seamSecsMax - ECON.seamSecsMin)) * difficulty(await miners24h(env, now)) * mult;
+    const end = now + Math.round(secs * 1000);
+    await env.DB.prepare('INSERT OR IGNORE INTO xl_seams (uid, started, ends) VALUES (?1, ?2, ?3)').bind(me.uid, now, end).run();
+    const s = await env.DB.prepare('SELECT started, ends FROM xl_seams WHERE uid = ?1').bind(me.uid).first();
+    return json({ok:true, now, start:Number(s.started), end:Number(s.ends), reward: seamReward(mined)});
+  }
+
+  if(p === '/api/quarx/claim' && req.method === 'POST'){
+    const s = await env.DB.prepare('SELECT started, ends FROM xl_seams WHERE uid = ?1').bind(me.uid).first();
+    if(!s) return fail(404, 'No seam is being worked.');
+    if(now < Number(s.ends)) return fail(409, 'The seam is not finished yet.');
+    const del = await env.DB.prepare('DELETE FROM xl_seams WHERE uid = ?1 AND ends = ?2').bind(me.uid, s.ends).run();
+    if(!del.meta.changes) return fail(409, 'This seam was already collected.');
+    const mined = await worldCounter(env, 'quarx_mined'), reward = Math.min(seamReward(mined), MINABLE - mined);
+    if(reward <= 0) return fail(409, 'All minable QuarX has been extracted.');
+    await addWorld(env, 'quarx_mined', reward);
+    await env.DB.prepare('INSERT INTO xl_minelog (uid, at, amount) VALUES (?1, ?2, ?3)').bind(me.uid, now, reward).run();
+    return json({ok:true, now, reward, mined: mined + reward});
+  }
+
+  if(p === '/api/bux/sandbox' && req.method === 'POST'){
+    // The alpha's sandbox allowance, modelled as a test-stablecoin deposit locked in the BanX reserve: once per citizen.
+    const amount = ECON.sandboxBuX * UNIT;
+    const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_mints (uid, amount, at) VALUES (?1, ?2, ?3)').bind(me.uid, amount, now).run();
+    if(r.meta.changes){ await addWorld(env, 'bux_minted', amount); await addWorld(env, 'bux_reserve', amount); }
+    return json({ok:true, minted: !!r.meta.changes, amount});
+  }
 
   if(p === '/api/sync' && req.method === 'GET'){
     const since = Math.max(0, Number(q.get('since')) || 0), cols = readCols(me);

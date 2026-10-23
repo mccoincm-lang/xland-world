@@ -1441,7 +1441,29 @@ function systemMove(st, op, event, asset, qty, from, to, reason, authority){
 function accountBalance(acc, asset){ let b=0n; for(const e of state.ledger){ if(e.asset!==asset||!e.qty) continue; if(e.to===acc) b+=BigInt(e.qty); if(e.from===acc) b-=BigInt(e.qty); } return b; }
 function projectBalances(st){ const av={}, lk={}; ASSETS.forEach(a=>{av[a.id]=0n; lk[a.id]=0n;}); for(const e of st.ledger){ av[e.asset]=(av[e.asset]||0n)+BigInt(e.delta||'0'); if(e.lockDelta) lk[e.asset]=(lk[e.asset]||0n)+BigInt(e.lockDelta); } return {av,lk}; }
 function reconcile(st){ const {av,lk}=projectBalances(st); return ASSETS.every(a=>av[a.id].toString()===String(st.bal[a.id]||'0') && lk[a.id].toString()===String((st.locked||{})[a.id]||'0')); }
-function grantSandbox(st){ postLedger(st,'sandbox-grant',[['bux',BigInt(SIM.sandboxGrantBuX)*UNIT]],'Sandbox allowance at Hotex check-in (simulation parameter, not canon)','hotex'); }
+function grantSandbox(st){ postLedger(st,'sandbox-grant',[['bux',BigInt(SIM.sandboxGrantBuX)*UNIT,'reserve:banx-locked']],`Sandbox allowance: ${SIM.sandboxGrantBuX} test dollars locked in the BanX reserve, ${SIM.sandboxGrantBuX} BuX minted 1:1 (simulation parameter, not canon)`,'hotex'); }
+/* ---- World economy: the server keeps the world counters (worker.js ECON). These mirror its rules for display and tests. ---- */
+const ECONOMY = { quarxCap:1e9, genesis:2.5e8, seamReward:1, targetMiners:8, dailySeams:5 };
+const MINABLE_U = (ECONOMY.quarxCap-ECONOMY.genesis)*Number(UNIT);
+function quarxEpoch(mined){ return mined>=MINABLE_U ? Infinity : Math.floor(-Math.log2(1-mined/MINABLE_U)); }
+function seamRewardU(mined){ const e=quarxEpoch(mined); return isFinite(e) ? Math.max(1, Math.floor(ECONOMY.seamReward*Number(UNIT)/2**e)) : 0; }
+function nextHalvingAtU(mined){ const e=quarxEpoch(mined); return isFinite(e) ? Math.ceil(MINABLE_U*(1-2**-(e+1))) : MINABLE_U; }
+function difficultyFor(miners){ return Math.max(1, miners/ECONOMY.targetMiners); }
+let world=null;
+async function refreshWorld(){ if(!serverMode||!serverBE) return; try{ world=await serverBE.call('GET','/world'); world.at=Date.now(); }catch(e){ return; }
+  const {route,arg}=parse(); if(route==='place' && ['quarx','vaults','banx'].includes(arg)){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
+  const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML(); }
+function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx'].includes(arg))||route==='economy'; }
+const fmtU = (u, dp=0) => (Number(u)/Number(UNIT)).toLocaleString('en-US',{maximumFractionDigits:dp});
+function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the world ledger…</p>':'';
+  const q=world.quarx, pct=q.mined/q.minable*100;
+  return `<div class="world-econ"><h3>The world's QuarX</h3>
+    <div class="econ-bar" role="img" aria-label="${pct.toFixed(6)} percent of minable QuarX extracted"><span style="width:${Math.max(.4,Math.min(100,pct))}%"></span></div>
+    <dl class="kv"><dt>Extracted by all citizens</dt><dd>${fmtU(q.mined,4)} of ${fmtU(q.minable)} QuarX</dd><dt>Mining epoch</dt><dd>${q.epoch}. Reward per seam: ${fmtU(q.reward,4)} QuarX; it halves at ${fmtU(q.nextHalvingAt)} extracted</dd>
+    <dt>Difficulty</dt><dd>${q.difficulty.toFixed(2)}× (${q.miners24h} miner${q.miners24h===1?'':'s'} in the last day; seams get longer above ${ECONOMY.targetMiners})</dd></dl></div>`; }
+function worldReserveHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the reserve…</p>':'';
+  const b=world.bux, ratio=b.minted?Math.round(b.reserve/b.minted*100):100;
+  return `<div class="world-econ"><h3>Proof of reserve</h3><dl class="kv"><dt>BuX minted in Xland</dt><dd>${fmtU(b.minted)} BuX</dd><dt>Dollars locked in the reserve</dt><dd>${fmtU(b.reserve)} (test dollars in this alpha)</dd><dt>Backing</dt><dd><b>${ratio}%</b>. Reserve dollars can never be withdrawn; burned BuX only raise the backing.</dd></dl></div>`; }
 function fmtAmt(v){ let b=BigInt(v); const neg=b<0n; if(neg) b=-b; const str=b.toString().padStart(Number(DEC)+1,'0');
   const ip=str.slice(0,-Number(DEC)).replace(/\B(?=(\d{3})+(?!\d))/g,','), fp=str.slice(-Number(DEC)).replace(/0+$/,''); return (neg?'-':'')+ip+(fp?'.'+fp:''); }
 function loadLocal(){ try{ const raw=localStorage.getItem(LS_KEY); if(raw) return migrate(JSON.parse(raw)); }catch(e){} return fresh(); }
@@ -1450,7 +1472,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD='r42';
+const BUILD='r43';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1569,7 +1591,7 @@ function serverBackend(){
     collection(c){ return { onSnapshot(cb){ (subs[c]||(subs[c]=[])).push(cb); if(synced) emitCol(c); return ()=>{ subs[c]=(subs[c]||[]).filter(x=>x!==cb); }; } }; }
   };
   const user={ id:async()=>me.uid, isOwner:async()=>!!me.owner };
-  return { db, user, key:()=>key, async start(){ me=await call('GET','/me'); await sync(); loop(); return me; } };
+  return { db, user, key:()=>key, call, async start(){ me=await call('GET','/me'); await sync(); loop(); return me; } };
 }
 async function connect(){
   let db=null, user=null;
@@ -1590,6 +1612,8 @@ async function connect(){
     const snap = await ref.get();
     const adopt = serverMode && lsGet('xland.adopt'); lsSet('xland.adopt','');
     remote = ref; accountLinked = true; socialInit(db, id, user);
+    // Citizens who arrived before the world ledger existed: record their sandbox mint against the reserve (once per citizen)
+    if(serverMode && state.passport && state.ledger.some(e=>e.op==='sandbox-grant')) serverBE.call('POST','/bux/sandbox').catch(()=>{});
     if(snap.exists && snap.data() && snap.data().state){
       const rs = migrate(JSON.parse(JSON.stringify(snap.data().state)));
       if(adopt || (rs.updatedAt||0) >= (state.updatedAt||0)){ state = rs; try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){} render(); }
@@ -2759,6 +2783,10 @@ function runSelfTests(){
   t('Failed build returns reserved QuarX', ()=>{ const c=clone(); postLedger(c,'mine-t',[['quarx',3n*UNIT]],'t'); lockLedger(c,'build-lock-t','LOCK','quarx',3n*UNIT,'t'); const mid=c.bal.quarx==='0'&&c.locked.quarx===String(3n*UNIT); lockLedger(c,'build-unlock-t','UNLOCK','quarx',3n*UNIT,'t'); return mid&&c.bal.quarx===String(3n*UNIT)&&c.locked.quarx==='0'; });
   t('Committed build consumes only reserved QuarX', ()=>{ const c=clone(); postLedger(c,'mine-u',[['quarx',4n*UNIT]],'t'); lockLedger(c,'build-lock-u','LOCK','quarx',3n*UNIT,'t'); lockLedger(c,'build-consume-u','CONSUME','quarx',3n*UNIT,'t','consumed:test'); return c.bal.quarx===String(UNIT)&&c.locked.quarx==='0'; });
   t('Locked funds cannot be spent', ()=>{ const c=clone(); postLedger(c,'mine-v',[['quarx',2n*UNIT]],'t'); lockLedger(c,'build-lock-v','LOCK','quarx',2n*UNIT,'t'); return !postLedger(c,'swap-forgex-v',[['quarx',-UNIT]],'t'); });
+  t('QuarX mining reward halves with each epoch and stops at the cap', ()=>{ const U=Number(UNIT); return seamRewardU(0)===U && seamRewardU(MINABLE_U*.5)===U/2 && seamRewardU(MINABLE_U*.75)===U/4 && seamRewardU(MINABLE_U)===0 && ECONOMY.genesis+MINABLE_U/U===ECONOMY.quarxCap; });
+  t('Halvings come sooner as supply runs out, never past the cap', ()=>{ let m=0, last=0; for(let k=0;k<20;k++){ const n=nextHalvingAtU(m); if(n<=m||n>MINABLE_U) return false; last=n; m=n; } return last<=MINABLE_U; });
+  t('Mining gets harder as more citizens mine', ()=>difficultyFor(0)===1 && difficultyFor(ECONOMY.targetMiners)===1 && difficultyFor(ECONOMY.targetMiners*2)===2 && difficultyFor(40)>difficultyFor(20));
+  t('BuX enters only from the locked reserve', ()=>{ const c=clone(); const ins=c.ledger.filter(e=>e.asset==='bux'&&BigInt(e.delta)>0n&&e.event==='GRANT'); return ins.length>0 && ins.every(e=>e.from==='reserve:banx-locked') && !c.ledger.some(e=>e.to==='reserve:banx-locked'&&e.asset!=='bux'); });
   t('Tundrax endurance premium raises the floor with time held', ()=>{ const b=1000n*UNIT; return resaleFloor('tundrax',b,0)===b+UNIT && resaleFloor('tundrax',b,2*365.25*86400000)===b+80n*UNIT && resaleFloor('tundrax',b,20*365.25*86400000)===b+200n*UNIT && resaleFloor('ximberland',b,20*365.25*86400000)===b+UNIT; });
   t('Tundrax resale floor rejects below acquisition + 1 BuX', ()=>{ const c=clone(), basis=500n*UNIT; return !evaluate('tundrax','sell-home',{price:basis,basis},c).ok && evaluate('tundrax','sell-home',{price:basis+UNIT,basis},c).ok; });
   t('Ximberland resale floor rejects below acquisition + 1 BuX', ()=>{ const c=clone(), basis=400n*UNIT; return !evaluate('ximberland','sell-home',{price:basis,basis},c).ok && evaluate('ximberland','sell-home',{price:basis+UNIT,basis},c).ok; });
@@ -2797,6 +2825,7 @@ function viewEconomy(){
   const st=s=>`<span class="cs cs-${s.toLowerCase()}">${s}</span>`;
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Civilization ledger</h1><p class="lede">Where every unit in your Xland comes from and where it goes. Treasuries, escrow and burns are ledger accounts, not magic balances.</p></div><span class="sim-badge">Simulation ${ECON_VERSION}</span></div>
+    ${serverMode?`<h2 class="display eh">The world ledger</h2><p class="lede" style="margin-bottom:1rem">Kept by the server for all citizens together: no one can change these numbers from their own device.</p><div id="econ-world" class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}</div>`:''}
     <h2 class="display eh">Territory economy matrix</h2><div class="tbl"><table class="wide"><thead><tr><th>Territory</th><th>Role</th><th>Outputs</th><th>Inputs</th><th>Constraint</th><th>Dependency value</th></tr></thead><tbody>${REGIONS.map(r=>{ const P=PROFILE[r.id]; return `<tr><td><b>${esc(r.name)}</b></td><td>${esc(P.role)}</td><td>${esc(P.outputs)}</td><td>${esc(P.inputs)}</td><td>${esc(TERR[r.id].constraint)}</td><td>${esc(P.dependency)}</td></tr>`; }).join('')}</tbody></table></div>
     <h2 class="display eh">Imports and exports</h2><div class="tbl"><table class="wide"><thead><tr><th>From</th><th>To</th><th>Flow</th><th>Why</th><th>Status</th><th>Route now</th></tr></thead><tbody>${FLOWS.map(([f,t,fl,w,st])=>`<tr><td>${esc(R[f].name)}</td><td>${esc(R[t].name)}</td><td>${esc(fl)}</td><td>${esc(w)}</td><td>${esc(st)}</td><td>${routeDisrupted(f,t)?'<b style="color:var(--warn)">Disrupted</b>':'Normal'}</td></tr>`).join('')}</tbody></table></div>
     <h2 class="display eh">Simulation lab</h2><p class="meta" style="margin-bottom:.8rem">World Architect tool for the prototype. Trigger a configured disruption and watch it change routes, extraction and harvests. Magnitudes are simulation parameters.</p>
@@ -3008,6 +3037,7 @@ function render(){
   if(key===lastRoute && html===lastHTML && app.childElementCount){ renderGuide(route); return; }
   app.classList.toggle('no-anim', key===lastRoute);
   app.innerHTML=html; lastHTML=html;
+  if(worldPage(route,arg) && (!world || Date.now()-(world.at||0)>15000)) refreshWorld();
   mountScene();
   renderGuide(route);
   if(key!==lastRoute){ window.scrollTo(0,0); lastRoute=key; }
@@ -3082,9 +3112,9 @@ function actQuarx(){
   const m=state.mine, left=quarxCap()-minedToday();
   if(!m){ return `<p class="meta" style="margin-bottom:.6rem"><b>${season().name}.</b> ${season().id==='cold'?'Seams take 30% longer while the frost holds.':'Seams are at their easiest.'} Seasons turn every week.</p><h2 class="act-h">Work a seam</h2><p class="meta">Extraction difficulty varies with the mountain, so each seam takes between ${fmtSecs(SIM.quarx.minSecs)} and ${fmtSecs(SIM.quarx.maxSecs)}. Each seam yields ${SIM.quarx.out} QuarX.${expTag}</p>
     <p class="meta" style="margin-top:.6rem">Extraction capacity left today: <b>${Math.max(0,left)} of ${quarxCap()}</b>. The real issuance formula is TBD, so capacity stays limited and configurable.</p>
-    ${left>0?`<button class="btn btn-primary" style="margin-top:1.2rem" data-act="mine-start">Mine QuarX</button>`:`<div class="lawcard" style="margin-top:1rem"><b>Capacity reached</b><p>Today's extraction capacity at this site is used up. QuarX must stay scarce.</p></div>`}`; }
-  const done=Date.now()>=m.end, diff=(m.end-m.start)/1000>95?'Hard seam':'Workable seam';
-  return `<h2 class="act-h">${diff}</h2>${done?`<button class="btn btn-gold" data-act="mine-claim">Collect ${SIM.quarx.out} QuarX</button>`:timerBar(m.start,m.end,'Extracting QuarX.')}`;
+    ${left>0?`<button class="btn btn-primary" style="margin-top:1.2rem" data-act="mine-start">Mine QuarX</button>`:`<div class="lawcard" style="margin-top:1rem"><b>Capacity reached</b><p>Today's extraction capacity at this site is used up. QuarX must stay scarce.</p></div>`}${worldMiningHTML()}`; }
+  const done=Date.now()>=m.end, diff=(m.end-m.start)/1000>95?'Hard seam':'Workable seam', out=m.reward?fmtAmt(BigInt(m.reward)):SIM.quarx.out;
+  return `<h2 class="act-h">${diff}</h2>${done?`<button class="btn btn-gold" data-act="mine-claim">Collect ${out} QuarX</button>`:timerBar(m.start,m.end,'Extracting QuarX.')}${worldMiningHTML()}`;
 }
 function actSwap(vid){
   const v=VENUES[vid], g=presence(v.region); if(g) return g;
@@ -3293,7 +3323,7 @@ function emissionSchedule(){ const cap=1e9, genesis=.25*cap, minable=cap-genesis
 function actVaults(){ const sch=emissionSchedule(), fmtN=n=>Math.round(n).toLocaleString('en-US');
   return `<h2 class="act-h">The genesis reserve</h2><p class="meta">QuarX is capped at 1,000,000,000 units. About a quarter rests here, in the Forerunner Vaults; the rest can only be mined in Xalp, and each epoch yields half of the one before.</p>
     <div class="tbl" style="margin-top:1rem"><table><thead><tr><th>Source</th><th>QuarX</th><th>Reward per seam</th></tr></thead><tbody><tr><td><b>Forerunner Vaults</b></td><td>${fmtN(sch.genesis)}</td><td>Genesis</td></tr>${sch.rows.map(r=>`<tr><td>Mining epoch ${r.epoch+1}</td><td>${fmtN(r.amount)}</td><td>${r.reward===1?'1×':r.reward.toString()+'×'}</td></tr>`).join('')}<tr><td class="meta">Later epochs</td><td class="meta">approach the cap, never pass it</td><td class="meta">keeps halving</td></tr></tbody></table></div>
-    <p class="meta" style="margin-top:.8rem">Difficulty rises with the number of active miners so emission follows this schedule, and construction consumes QuarX for good.</p>
+    <p class="meta" style="margin-top:.8rem">Difficulty rises with the number of active miners so emission follows this schedule, and construction consumes QuarX for good.</p>${worldMiningHTML()}
     <h3 style="margin:1.4rem 0 .4rem">How the Vaults are shared</h3><div class="tbl"><table><thead><tr><th>Share</th><th>QuarX</th><th>Release</th></tr></thead><tbody>
     <tr><td><b>Community and missions</b> 30%</td><td>75,000,000</td><td>Earned through play and contribution over 5+ years</td></tr>
     <tr><td><b>Presale</b> 20%</td><td>50,000,000</td><td>3 tranches at growth milestones; use first, sell later</td></tr>
@@ -3309,7 +3339,8 @@ function actVaults(){ const sch=emissionSchedule(), fmtN=n=>Math.round(n).toLoca
 function actBanx(){ const g=presence('xetropolitan'); if(g) return g; const lr=liquidityReading();
   return `<h2 class="act-h">BanX, the liquidity institution</h2><p class="meta">BanX lets outside money enter Xland when the economy truly needs it. It never pays yield and never mints BuX against QuarX.</p>
     <dl class="kv" style="margin:1rem 0"><dt>BuX</dt><dd>1 BuX = 1 USD, minted only 1:1 against verified dollar or stablecoin deposits</dd><dt>QuarX value (30-day average)</dt><dd>${fmtAmt(lr.quarxValue)} BuX in this simulation</dd><dt>BuX in circulation</dt><dd>${fmtAmt(lr.buxOut)} BuX in this simulation</dd><dt>Liquidity gateway</dt><dd>${lr.open?'<b style="color:var(--cyan)">Ratio crossed</b>: inflows may open with Assembly approval':'Closed: QuarX value is below the BuX in circulation'}</dd><dt>Second stage</dt><dd>Xetland, the liquidity reserve, only after ten years</dd></dl>
-    <button class="btn btn-quiet" disabled>Deposit external liquidity (Preview)</button><p class="meta" style="margin-top:.6rem">Feature-flagged: needs the ratio, a passed law and a licensed operator.</p>`; }
+    ${worldReserveHTML()}
+    <button class="btn btn-quiet" disabled style="margin-top:1rem">Deposit external liquidity (Preview)</button><p class="meta" style="margin-top:.6rem">Feature-flagged: needs the ratio, a passed law and a licensed operator.</p>`; }
 function actService(q){
   const sv=SERVICES[q.id], g=presence(q.region); if(g) return g;
   const log=state.services[q.id]||[], today=log.some(t=>t>=nowDay());
@@ -3497,7 +3528,7 @@ document.addEventListener('click', e=>{
       emit('VISITOR_CREATED'); emit('HOTEX_CHECKIN_COMPLETED'); emit('PASSPORT_ISSUED',{id:state.passportId}); emit('IDENTITY_STATE_CHANGED',{from:'visitor',to:'guest'});
       state.transitions.push({from:'visitor',to:'guest',reason:'Hotex check-in',at:Date.now()}); state.mstate.arrival='active';
       chron('PassportInscribed','Passport inscribed at Hotex',`${hx.handle} checked in at Hotex and became a Hotex Guest. Passport ${state.passportId}.`,null,'legacy');
-      grantSandbox(state);
+      grantSandbox(state); if(serverMode && serverBE) serverBE.call('POST','/bux/sandbox').catch(()=>{});
       state.guide={min:false}; save(); hx={step:0,handle:'',paths:[],affinity:''}; location.hash='#/world'; toast('Passport inscribed. You are now a Hotex Guest.'); break;
     case 'travel': { const r=R[id], el=eligibility(r); if(!el.can){ toast(el.text); return; } visit(id); break; }
     case 'prod-start': { if(!here('farmx')||state.plot) return; const f=SIM.farm[id]; const t=Date.now(); state.plot={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); toast(`${f.label}: started.`); break; }
@@ -3506,9 +3537,17 @@ document.addEventListener('click', e=>{
       if(postLedger(state,p.op,[[p.kind,BigInt(f.out)*UNIT]],`Harvest at the FarmX fields: ${f.out} ${AS[p.kind].sym}`,'fields')){
         if(first) chron('FirstHarvest','First harvest in FarmX',`You harvested ${f.out} ${AS[p.kind].sym} at the FarmX fields.`,'farmx','notable'); }
       state.plot=null; save(); render(); toast(`Harvested ${f.out} ${AS[p.kind].sym}.`); break; }
-    case 'mine-start': { if(!here('xalp')||state.mine||minedToday()>=quarxCap()) return; const t=Date.now(), secs=Math.round((season().id==='cold'?SIM.coldSeasonSeamMult:1)*(SIM.quarx.minSecs+Math.floor(Math.random()*(SIM.quarx.maxSecs-SIM.quarx.minSecs+1)))*evMod('seamMult',1));
+    case 'mine-start': if(serverMode && serverBE){ if(!here('xalp')||state.mine) return; const mult=(season().id==='cold'?SIM.coldSeasonSeamMult:1)*evMod('seamMult',1);
+        (async()=>{ try{ const j=await serverBE.call('POST','/quarx/start?mult='+mult), off=Date.now()-j.now; state.mine={start:j.start+off,end:j.end+off,op:opId('mine'),server:true,reward:j.reward}; save(); render(); toast('Extraction started.'); refreshWorld(); }catch(err){ toast(err.message); } })(); break; }
+      { if(!here('xalp')||state.mine||minedToday()>=quarxCap()) return; const t=Date.now(), secs=Math.round((season().id==='cold'?SIM.coldSeasonSeamMult:1)*(SIM.quarx.minSecs+Math.floor(Math.random()*(SIM.quarx.maxSecs-SIM.quarx.minSecs+1)))*evMod('seamMult',1));
       state.mine={start:t,end:t+secs*1000,op:opId('mine')}; save(); render(); toast('Extraction started.'); break; }
-    case 'mine-claim': { const m=state.mine; if(!m||Date.now()<m.end) return; const first=!state.ledger.some(e=>e.op.startsWith('mine-'));
+    case 'mine-claim': if(state.mine && state.mine.server && serverBE){ const m=state.mine; if(Date.now()<m.end) return;
+        (async()=>{ let j; try{ j=await serverBE.call('POST','/quarx/claim'); }catch(err){ if(err.status===404){ state.mine=null; save(); render(); } toast(err.message); return; }
+          const first=!state.ledger.some(e=>e.op.startsWith('mine-')), amt=BigInt(j.reward);
+          if(postLedger(state,m.op,[['quarx',amt]],`QuarX extracted in Xalp: ${fmtAmt(amt)} QuarX (world ledger)`,'quarx')){ state.mineLog.push(Date.now());
+            if(first) chron('FirstQuarX','First QuarX extracted','You worked a seam in Xalp and extracted QuarX, the substance of construction.','xalp','notable'); }
+          state.mine=null; save(); render(); toast(`Collected ${fmtAmt(amt)} QuarX.`); refreshWorld(); })(); break; }
+      { const m=state.mine; if(!m||Date.now()<m.end) return; const first=!state.ledger.some(e=>e.op.startsWith('mine-'));
       if(postLedger(state,m.op,[['quarx',BigInt(SIM.quarx.out)*UNIT]],`QuarX extracted in Xalp: ${SIM.quarx.out} QuarX`,'quarx')){ state.mineLog.push(Date.now());
         if(first) chron('FirstQuarX','First QuarX extracted','You worked a seam in Xalp and extracted QuarX, the substance of construction.','xalp','notable'); }
       state.mine=null; save(); render(); toast(`Collected ${SIM.quarx.out} QuarX.`); break; }
