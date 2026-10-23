@@ -16,7 +16,7 @@ The Xland world: the 3D map, Hotex, passports, wallet, land, governance and the 
 | `test/shots.cjs` | Screenshots every screen (phone and desktop, both themes) and runs the built-in rule tests. |
 | `test/audit.cjs` | Visits every route as a new tester and reports errors, overflow, tiny text and broken artwork. |
 | `test/journey.cjs` | Plays a new tester's first steps on a phone. |
-| `test/map.cjs`, `test/economy.cjs`, `test/market.cjs` | Two-citizen checks: shared land, server mining and BuX mint, a shop sale between citizens. |
+| `test/map.cjs`, `test/economy.cjs`, `test/market.cjs`, `test/territories.cjs` | Two-citizen checks: shared land, server mining and BuX mint, a shop sale between citizens, a farm stand sale in FarmX and population stages. |
 
 ## Change, check, ship
 

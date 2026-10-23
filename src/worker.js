@@ -48,7 +48,8 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS xl_orders (oid TEXT PRIMARY KEY, buyer TEXT NOT NULL, seller TEXT NOT NULL, ref TEXT NOT NULL, asset TEXT NOT NULL, qty INTEGER NOT NULL, price INTEGER NOT NULL, total INTEGER NOT NULL, fee INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS xl_orders_buyer ON xl_orders (buyer, updated)",
   "CREATE INDEX IF NOT EXISTS xl_orders_seller ON xl_orders (seller, updated)",
-  "CREATE INDEX IF NOT EXISTS xl_orders_ref ON xl_orders (seller, ref, status)"
+  "CREATE INDEX IF NOT EXISTS xl_orders_ref ON xl_orders (seller, ref, status)",
+  "ALTER TABLE xl_shopfronts ADD COLUMN territory TEXT NOT NULL DEFAULT 'xetropolitan'"
 ];
 
 /* ---------------- World economy (server-authoritative) ----------------
@@ -60,9 +61,19 @@ const SCHEMA = [
    The page mirrors these rules (ECONOMY in index.html) for display and for its rule tests. */
 const UNIT = 10000;
 const ECON = { quarxCap: 1e9, genesis: 2.5e8, seamReward: 1, seamSecsMin: 60, seamSecsMax: 120, dailySeams: 5, targetMiners: 8, sandboxBuX: 1000 };
-/* Plaxa market (provisional, alpha): a shopfront consumes QuarX for good; 1% of each sale goes to the Xetropolitan
-   treasury; a buyer may cancel an order the merchant has not filled after 24 hours. */
-const MARKET = { shopfrontQuarx: 3, feeBps: 100, maxQty: 1000, maxOpenPerBuyer: 20, cancelAfterMs: 24 * 3600 * 1000, assets: ['vegiex', 'livestox', 'quarx'] };
+/* Citizen shops (provisional, alpha). Each open territory has its own kind of shop: the QuarX its shopfront consumes for
+   good, the goods it may sell, and the market fee to the territory treasury (none in tax-free lands). A buyer may cancel an
+   order the merchant has not filled after 24 hours. The page mirrors this table (SHOP_TERR in index.html). */
+const SHOPS = {
+  xetropolitan: { quarx: 5, feeBps: 100, assets: ['vegiex', 'livestox', 'quarx'] },
+  farmx:        { quarx: 2, feeBps: 100, assets: ['vegiex', 'livestox'] },
+  ximberland:   { quarx: 3, feeBps: 100, assets: ['vegiex'] },
+  xalp:         { quarx: 4, feeBps: 0,   assets: ['quarx'] },
+  tundrax:      { quarx: 6, feeBps: 0,   assets: ['vegiex', 'livestox', 'quarx'], max: 50 }
+};
+const MARKET = { maxQty: 1000, maxOpenPerBuyer: 20, cancelAfterMs: 24 * 3600 * 1000 };
+/* Parcels no citizen can ever claim: the eternal House on the River (Aquax) and the locked reserves. */
+const UNCLAIMABLE = /^(AQX|XTL|XST)-/;
 const MINABLE = (ECON.quarxCap - ECON.genesis) * UNIT;
 function quarxEpoch(mined){ if(mined >= MINABLE) return Infinity; return Math.floor(-Math.log2(1 - mined / MINABLE)); }
 function seamReward(mined){ const e = quarxEpoch(mined); if(!isFinite(e)) return 0; return Math.max(1, Math.floor(ECON.seamReward * UNIT / 2 ** e)); }
@@ -80,12 +91,14 @@ async function worldReport(env, now){
       nextHalvingAt: nextHalvingAt(mined), miners24h: miners, difficulty: difficulty(miners), dailySeams: ECON.dailySeams },
     bux: { minted: await worldCounter(env, 'bux_minted'), reserve: await worldCounter(env, 'bux_reserve') },
     market: { shopfronts: await worldCounter(env, 'shopfronts'), quarxConsumed: await worldCounter(env, 'quarx_consumed'), sales: await worldCounter(env, 'market_sales'),
-      volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), feeBps: MARKET.feeBps, shopfrontQuarx: MARKET.shopfrontQuarx }
+      volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), shops: SHOPS }
   };
 }
 const orderOut = o => ({ oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
 let schemaReady = false;
-async function ensureSchema(env){ if(schemaReady) return; for(const s of SCHEMA) await env.DB.prepare(s).run(); schemaReady = true; }
+async function ensureSchema(env){ if(schemaReady) return;
+  for(const s of SCHEMA){ try { await env.DB.prepare(s).run(); } catch (e) { if(!s.startsWith('ALTER')) throw e; } }   // ALTER fails harmlessly once the column exists
+  schemaReady = true; }
 
 const enc = new TextEncoder();
 async function sha256hex(s){ const d = await crypto.subtle.digest('SHA-256', enc.encode(s)); return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
@@ -168,10 +181,12 @@ async function api(req, env, url){
 
   if(p === '/api/shop/open' && req.method === 'POST'){
     // Recorded once per citizen: the shopfront's QuarX leaves circulation for good.
-    const name = String(q.get('name') || '').trim().slice(0, 32);
+    const name = String(q.get('name') || '').trim().slice(0, 32), t = q.get('t') || 'xetropolitan', cfg = SHOPS[t];
     if(name.length < 2) return fail(400, 'Give your shop a name.');
-    const amount = MARKET.shopfrontQuarx * UNIT;
-    const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at) VALUES (?1, ?2, ?3, ?4)').bind(me.uid, name, amount, now).run();
+    if(!cfg) return fail(400, 'Shops cannot be built in this territory yet.');
+    if(cfg.max){ const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_shopfronts WHERE territory = ?1').bind(t).first(); if(n && Number(n.n) >= cfg.max) return fail(409, 'Every shop in this territory is taken.'); }
+    const amount = cfg.quarx * UNIT;
+    const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at, territory) VALUES (?1, ?2, ?3, ?4, ?5)').bind(me.uid, name, amount, now, t).run();
     if(r.meta.changes){ await addWorld(env, 'shopfronts', 1); await addWorld(env, 'quarx_consumed', amount); }
     return json({ok:true, built: !!r.meta.changes, quarx: amount});
   }
@@ -190,14 +205,17 @@ async function api(req, env, url){
     const doc = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'shops' AND id = ?1").bind(seller).first();
     const shop = doc ? JSON.parse(doc.data) : null;
     if(!shop || !(Number(shop.openUntil) > now)) return fail(409, 'This shop is closed.');
+    const front = await env.DB.prepare('SELECT territory FROM xl_shopfronts WHERE uid = ?1').bind(seller).first();   // the server's record decides the territory, not the shop document
+    const cfg = front && SHOPS[front.territory];
+    if(!cfg) return fail(409, 'This shop has no shopfront.');
     const item = (Array.isArray(shop.items) ? shop.items : []).find(x => x && x.ref === ref);
-    if(!item || !MARKET.assets.includes(item.asset)) return fail(404, 'This item is no longer listed.');
+    if(!item || !cfg.assets.includes(item.asset)) return fail(404, 'This item is no longer listed.');
     const unit = Number(item.price);
     if(!Number.isInteger(unit) || unit < 1) return fail(409, 'This item has no valid price.');
     if(unit !== price) return fail(409, 'The price has changed. Look again before buying.');
     const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM xl_orders WHERE buyer = ?1 AND status = 'paid'").bind(me.uid).first();
     if(open && Number(open.n) >= MARKET.maxOpenPerBuyer) return fail(429, 'You have too many orders waiting. Wait for merchants to fill them.');
-    const total = qty * unit, fee = Math.floor(total * MARKET.feeBps / 10000);
+    const total = qty * unit, fee = Math.floor(total * cfg.feeBps / 10000);
     // One statement: the order is written only if the listing still has enough stock, so two buyers can never oversell it.
     const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated)
       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'paid', ?10, ?10
@@ -248,6 +266,7 @@ async function api(req, env, url){
     const text = JSON.stringify(data);
     if(text.length > (col === 'state' ? MAX_STATE : MAX_DOC)) return fail(413, 'This document is too large.');
     if(col === 'claims'){
+      if(UNCLAIMABLE.test(id)) return fail(403, 'This land can never be claimed.');
       if(data.owner !== me.uid) return fail(403, 'A claim must name its own holder.');
       const r = await env.DB.prepare('INSERT INTO xl_docs (col, id, data, owner, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(col, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at WHERE xl_docs.owner = excluded.owner')
         .bind(col, id, text, me.uid, now).run();

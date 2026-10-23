@@ -951,6 +951,12 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .pp-licence b{font-variant:small-caps;letter-spacing:.04em;color:var(--gold)}
 @media (max-width:640px){ .tbl .upd{display:none} .otbl th,.otbl td{padding:.55rem .45rem} .ord{font-variant:normal;letter-spacing:0;padding:0 .3rem;white-space:normal} }
 
+/* ===== r45 Population stages and territory shops ===== */
+.pop-card{padding:1.1rem 1.3rem;margin:1.6rem 0 0}
+.pop-card h2{font-family:var(--font-display);font-weight:400;font-size:1.35rem;margin:0 0 .3rem}
+.tshops{margin-top:2.2rem;padding-top:1.6rem;border-top:1px solid var(--brass-hairline)}
+.tshops .shop-head{margin-top:1.8rem}
+
 </style>
 </head>
 <body>
@@ -1036,14 +1042,14 @@ const REGIONS = [
    tbd:[T('Exact trigger formula for the liquidity crisis'),T('The date or event that starts the ten years')], geo:{seed:[470,615], weight:-400, hue:172, dl:'0%'} },
  { id:'xasteland', landscape:'Barren ash plains with cracked ground that still glows faintly, where burned value collects.', name:'Xasteland', type:'Barren land, expansion reserve', people:null, status:'locked',
    role:'Reserved for future Xlanders. Burned tokens are represented here.',
-   summary:'Xasteland is barren today. When Xland reaches one billion addresses, its land opens at affordable prices for newcomers.',
+   summary:'Xasteland is barren today. When 90% of all open homes in Xland are lived in, its land opens at affordable prices for newcomers.',
    pos:[S('Future inclusion and low-cost entry')],
    neg:[S('Initially barren and economically inactive'),S('Associated with burned value')],
    resources:[S('Burned tokens, conceptually accumulated here')],
-   rules:[S('No current inhabitants'),S('Reserved for future Xlanders'),S('Land becomes available at affordable prices at 1 billion addresses')],
+   rules:[S('No current inhabitants'),S('Reserved for future Xlanders'),S('Land becomes available at affordable prices when 90% of all open homes are lived in')],
    buildings:[],
    deps:[['xetropolitan','Future affordable land for new Xlanders']],
-   unlock:'Opens at affordable prices when Xland reaches 1,000,000,000 addresses.',
+   unlock:'Opens at affordable prices when 90% of all open homes are lived in (16,254,000 residents).',
    tbd:[], geo:{seed:[845,365], weight:600, hue:22, dl:'0%'} },
  { id:'tundrax', landscape:'Cold, treeless tundra of moss and lichen, patched with snow, with only a handful of homes.', name:'Tundrax', type:'Tundra', people:'IndigenX', status:'restricted',
    role:'A sparse homeland of subsistence, autonomy and cultural preservation.',
@@ -1151,7 +1157,7 @@ const PLACES = [
  {id:'tundraxhomes', act:true, name:'Tundrax homes', region:'tundrax', d:'tundra', at:[302,168], r:0, desc:'A handful of homes on the tundra. Tax-free, scarce, and convertible to other uses only after two years and a 10,000 BuX deposit.'},
  {id:'oracles', act:true, name:'Bridges and oracles', region:'xahara', d:'frontier', at:null, r:0, desc:'Owned, operated and guarded by settled Xahara actors. They connect Xland to other worlds.'},
  {id:'commons', act:true, name:'Local governance', region:'ixeland', d:'commons', at:[455,109], r:0, desc:'Xelians create and use their own governance mechanisms for local affairs.'},
- {id:'house', name:'The House on the River', region:'aquax', d:'river', at:[566,405], r:40, founder:true, hidden:true, desc:'The singular residence of Aquax, home of the first resident and creator of Xland. It stands alone on an islet in the river, and Aquax stays exceptional because of it.'}
+ {id:'house', name:'The House on the River', region:'aquax', d:'river', at:[566,405], r:40, founder:true, hidden:true, desc:'The singular residence of Aquax, home of the first resident and creator of Xland. It stands alone on an islet in the river, and Aquax stays exceptional because of it. It is eternal: it can never be sold, transferred, taxed or reassigned, and it remains after its founder.'}
 ];
 const PL = Object.fromEntries(PLACES.map(p=>[p.id,p]));
 const UNPLACED = [['Shantix','Slums and unsafe buildings. Their behavior and social meaning are still open, so they are not placed.'],['Special Buildings','Monuments that need QuarX, governance approval and Lex. None has been built yet.']];
@@ -1341,7 +1347,7 @@ const TERR = {
   ximberland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is TBD.'}, greenAssets:['vegiex'], resaleFloor:{deltaBuX:1, why:'Anti-dumping: a home can never be resold below its acquisition price + 1 BuX, which keeps property values in the forest stable.'}, signature:'Long-term residence and a green economy', constraint:'Resale floor; approved green assets only'},
   aquax:{access:'EXCEPTIONAL', tax:{applies:null, rate:null, note:'No normal population.'}, signature:'Exploration of a rare water realm', constraint:'No normal population; one residence, not available'},
   xetland:{access:'LOCKED', lock:{rule:'Land is not for sale for the first ten years.', epoch:null, trigger:null}, tax:{applies:null,rate:null,note:'Locked.'}, signature:'Future liquidity reserve', constraint:'Locked for the first ten years'},
-  xasteland:{access:'LOCKED', lock:{rule:'Opens at affordable prices at 1,000,000,000 addresses.', trigger:null}, tax:{applies:null,rate:null,note:'Locked.'}, signature:'Visible burn history and a future frontier', constraint:'Locked until a population threshold'},
+  xasteland:{access:'LOCKED', lock:{rule:'Opens at affordable prices when 90% of all open homes are lived in (16,254,000 residents).', trigger:'population-90'}, tax:{applies:null,rate:null,note:'Locked.'}, signature:'Visible burn history and a future frontier', constraint:'Locked until a population threshold'},
   tundrax:{access:'OPEN / RESTRICTED', tax:{applies:'none', rate:0, note:'No tax.'}, conversion:{ageYears:2, depositBuX:10000}, hardship:{ratePerYearBps:400, capBps:2000, status:'PROVISIONAL'}, resaleFloor:{deltaBuX:1, why:'Anti-dumping: a home can never be resold below its acquisition price + 1 BuX, so value in a hard territory is protected.'}, signature:'Scarce residence and later use conversion', constraint:'Very few homes; conversion takes two years and a deposit'},
   ixeland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is TBD.'}, localAsset:{name:null, supply:null, voting:null}, signature:'Community governance', constraint:'Local governance asset is TBD'},
   xahara:{access:'OPEN', tax:{applies:null, rate:null, note:'Nomads do not pay for a place to live or trade.'}, signature:'Rare digital assets and the outside gateway', constraint:'Scarce water and thin liquidity'}
@@ -1359,7 +1365,7 @@ function territoryWorld(id){
     case 'ximberland': return [['Homax held', state.homes.length],['Green exchange trades', ops('swap-greenx')]];
     case 'aquax': return [['Residences', '1, unique, not available'],['Future auctions', 'Feature-flagged']];
     case 'xetland': return [['Status', 'Locked and observable'],['Unlock epoch', 'TBD'],['Crisis trigger', 'TBD']];
-    case 'xasteland': return [['Burned to date (simulated)', fmtAmt(burnedBuX())+' BuX'],['Population trigger', '1,000,000,000 addresses (definition TBD)']];
+    case 'xasteland': return [['Burned to date (simulated)', fmtAmt(burnedBuX())+' BuX'],['Population trigger', `90% of open homes lived in: ${fmtN(xastelandThreshold())} residents`]];
     case 'tundrax': return [['Homes', 'Very few, selected in the ICO era'],['Conversion', '2 years + 10,000 BuX']];
     case 'ixeland': return [['Community assemblies attended', state.attended.includes('ixeland')?1:0],['Local governance asset', 'Name, supply and rules TBD']];
     case 'xahara': return [['Rare listings left today', Math.max(0,SIM.rareDaily-rareToday())],['Rare assets you hold', state.items.length],['Bridges and oracles', 'Feature-flagged']];
@@ -1386,7 +1392,7 @@ function evaluate(territory, action, ctx, st){ st=st||state;
 }
 const LAWS = {
   xetland:{action:'Request land in Xetland', law:'Xetland land is not available for sale during the first ten years.', why:'Xetland is the liquidity reserve of Xland. It stays closed until liquidity becomes critically scarce, and not within the first decade.'},
-  xasteland:{action:'Request land in Xasteland', law:'Xasteland land opens at affordable prices only when Xland reaches 1,000,000,000 addresses.', why:'Xasteland is reserved for future Xlanders and holds the burned value of Xland.'},
+  xasteland:{action:'Request land in Xasteland', law:'Xasteland land opens at affordable prices only when 90% of all open homes in Xland are lived in.', why:'Xasteland is reserved for future Xlanders and holds the burned value of Xland.'},
   tundrax:{action:'Request a home in Tundrax', law:'Tundrax has very few homes, and initial home selection is tied to ICO-era participants.', why:'Scarcity is part of Tundrax: no tax, but very limited access.'},
   aquax:{action:'Request a home in Aquax', law:'Aquax holds a single residence, The House on the River, and it is not available.', why:'Aquax is exceptional by canon and is not a normal residential zone.'}
 };
@@ -1539,7 +1545,7 @@ const PARCELS = [
   ...[[478,452],[478,416],[442,410],[442,392],[502,446],[472,470]].map((at,i)=>({id:'XET-U-'+String(i+1).padStart(2,'0'), t:'xetropolitan', d:'market', at, zoning:['Commercial'], price:SIM.urbanLotPrice, rights:['Ownership','Use: commercial','Transfer'], excluded:['Construct (commercial recipes are feature-flagged)','Residence'], note:'Urban lot in the Market Quarter. Urban tax applies to residents; the rate is TBD.'})),
   {id:'XET-C-01', t:'xetropolitan', d:'civic', at:[468,320], zoning:['Civic','Special Building'], fixed:'RESERVED', rights:['Construct: Special Building with governance permission'], excluded:['Private ownership'], note:'The public Civic plaza. Not for sale.'},
   {id:'XALP-L-01', t:'xalp', d:'resort', at:[655,300], zoning:['Resort'], leaseOnly:true, rights:['Temporary use, one night to one month'], excluded:['Ownership','Construction','Transfer'], note:'Lease only, through the Xalp resort lodges.'},
-  {id:'AQX-01', t:'aquax', d:'river', at:[566,405], zoning:['Residential (unique)'], fixed:'HELD', rights:[], excluded:['Acquisition'], note:'Unique and held. Not available.'},
+  {id:'AQX-01', t:'aquax', d:'river', at:[566,405], name:'The House on the River', eternal:true, zoning:['Residential (unique, eternal)'], fixed:'HELD', rights:['Residence of the creator of Xland, for ever'], excluded:['Acquisition','Transfer','Sale','Taxation','Division','Demolition'], note:'The House on the River: the eternal residence of the creator of Xland. It can never be sold, transferred, taxed, divided, demolished or reassigned, and it remains after its founder.'},
   {id:'TDX-01', t:'tundrax', d:'tundra', at:[302,168], zoning:['Residential'], fixed:'RESTRICTED', rights:['Ownership','Residence','Convert use after two years with a 10,000 BuX deposit'], excluded:[], note:'Initial homes are selected by ICO-era participants.'},
   {id:'TDX-02', t:'tundrax', d:'tundra', at:[330,152], zoning:['Residential'], fixed:'RESTRICTED', rights:['Ownership','Residence','Convert use after two years with a 10,000 BuX deposit'], excluded:[], note:'Initial homes are selected by ICO-era participants.'},
   {id:'IXL-01', t:'ixeland', d:'commons', at:[440,124], zoning:['Community'], fixed:'RESTRICTED', rights:[], excluded:[], note:'Community land. Local governance mechanics are TBD.'},
@@ -1555,11 +1561,13 @@ const BUILDING_DEFS = {
 function rightFor(st, pid){ return (st.rights||[]).find(r=>r.parcel===pid && r.status==='active'); }
 function parcelAvail(pp, st){ st=st||state; if(TERR[pp.t].access==='LOCKED') return 'LOCKED'; if(pp.fixed) return pp.fixed; if(pp.leaseOnly) return 'LEASE ONLY'; if(rightFor(st,pp.id)) return 'HELD'; if(st===state && social.claims[pp.id] && social.claims[pp.id].owner && social.claims[pp.id].owner!==social.me) return 'HELD'; return 'AVAILABLE'; }
 function finishParcelBuy(id){ const pp=PBY[id]; emit('PROPERTY_RIGHT_ACQUIRED',{parcel:id}); chron('PropertyAcquired',`Parcel ${id} acquired in ${R[pp.t].name}`,`Rights: ${pp.rights.join(', ')}.`,pp.t,pp.building==='homax'?'notable':'ordinary'); save(); render(); toast(`Parcel ${id} is yours.`); }
-function acquireParcel(st, id){ const pp=PBY[id]; if(!pp) return {ok:false, why:'No such parcel.'};
+function acquireParcel(st, id, residents){ const pp=PBY[id]; if(!pp) return {ok:false, why:'No such parcel.'};
   const av=parcelAvail(pp,st); if(av==='LOCKED') return {ok:false, why:TERR[pp.t].lock.rule};
   if(av!=='AVAILABLE') return {ok:false, why:`This parcel is ${av.toLowerCase()}. ${pp.note||''}`};
   if(!st.passport) return {ok:false, why:'A passport is required.'};
   if(st.currentRegion!==pp.t) return {ok:false, why:`Acquisition happens on site. You must be in ${R[pp.t].name}.`};
+  { const res=residents||(st===state?residentsNow():{}), already=(st.rights||[]).some(r=>r.status==='active'&&r.territory===pp.t);
+    if(!already && POP.share[pp.t]!=null && roomIn(pp.t,res)<=0) return {ok:false, why:`Every home open in ${R[pp.t].name} in stage ${popStage(res)+1} is lived in. The next stage opens when 90% of this one is lived in across Xland.`}; }
   const price=BigInt(pp.price)*UNIT; if(BigInt(st.bal.bux)<price) return {ok:false, why:`The simulated terms are ${pp.price} BuX; you hold ${fmtAmt(st.bal.bux)}.`};
   if(!postLedger(st,'parcel-'+id,[['bux',-price,'treasury:'+pp.t]],`Parcel ${id} acquired in ${R[pp.t].name}`,id)) return {ok:false, why:'This acquisition was already processed.'};
   st.rights.push({id:'right-'+id, parcel:id, territory:pp.t, rights:pp.rights, excluded:pp.excluded, use:pp.zoning[0], basis:price.toString(), startAt:Date.now(), endAt:null, status:'active', lawVersion:LAW_VERSION});
@@ -1667,8 +1675,8 @@ const OPMETA = [
   ['homax-acquire','PROPERTY_SALE','ximberland','treasury:ximberland'], ['parcel-XIM','PROPERTY_SALE','ximberland','treasury:ximberland'], ['parcel-FX','PROPERTY_SALE','farmx','treasury:farmx'], ['parcel-XET','PROPERTY_SALE','xetropolitan','treasury:xetropolitan'],
   ['proj-','LOCK','farmx','player:locked'], ['rent-resort','TRANSFER','xalp','treasury:xalp'], ['rent-shoppex','TRANSFER','xetropolitan','treasury:xetropolitan'],
   ['rare-','TRANSFER','xahara','external:outside-seller'], ['presale-','TRANSFER','xalp','source:forerunner-vaults'], ['build-lock','LOCK','xetropolitan','player:locked'], ['build-unlock','UNLOCK','xetropolitan','player:locked'],
-  ['build-consume','CONSUME','xetropolitan','consumed:civicsite'], ['shop-lock','LOCK','xetropolitan','player:locked'], ['shop-build','CONSUME','xetropolitan','consumed:shopfront'],
-  ['mkt-list','LOCK','xetropolitan','player:locked'], ['mkt-unlist','UNLOCK','xetropolitan','player:locked'], ['mkt-deliver','CONSUME','xetropolitan','buyer'], ['mkt-pay','TRANSFER','xetropolitan','escrow:plaxa'], ['mkt-refund','TRANSFER','xetropolitan','escrow:plaxa'], ['mkt-sale','MARKET','xetropolitan','escrow:plaxa'], ['mkt-recv','MARKET','xetropolitan','shop'], ['mkt-fee','TRANSFER','xetropolitan','treasury:xetropolitan'], ['build-fund','CONSUME','xetropolitan','consumed:civicsite'], ['burn-','BURN','xasteland','burn']
+  ['build-consume','CONSUME','xetropolitan','consumed:civicsite'], ['shop-lock','LOCK',null,'player:locked'], ['shop-build','CONSUME',null,'consumed:shopfront'],
+  ['mkt-list','LOCK',null,'player:locked'], ['mkt-unlist','UNLOCK',null,'player:locked'], ['mkt-deliver','CONSUME',null,'buyer'], ['mkt-pay','TRANSFER',null,'escrow:market'], ['mkt-refund','TRANSFER',null,'escrow:market'], ['mkt-sale','MARKET',null,'escrow:market'], ['mkt-recv','MARKET',null,'shop'], ['mkt-fee','TRANSFER',null,'treasury'], ['build-fund','CONSUME','xetropolitan','consumed:civicsite'], ['burn-','BURN','xasteland','burn']
 ];
 const l0=lines=>lines.some(l=>String(l[2]||'').startsWith('logistics')&&l[1]!==0n);
 function opMeta(op){ return OPMETA.find(m=>op.startsWith(m[0]))||['','TRANSFER',null,'unknown']; }
@@ -1736,7 +1744,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r44';
+const BUILD = 'r45';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1747,7 +1755,7 @@ function socialChanged(){ clearTimeout(socialChanged.t); socialChanged.t=setTime
   const {route,arg}=parse(); const typing=document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
   if(route==='world'){ XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); const pn=$('#world-panel'); if(pn && ui.parcel && PBY[ui.parcel]) pn.innerHTML=panelParcel(PBY[ui.parcel]); else if(pn && ui.selected && !ui.place) pn.innerHTML=panelDetail(R[ui.selected]); }
   else if(route==='place' && arg==='complex' && !typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL.complex); }
-  else if(route==='place' && (arg==='plaxa'||arg==='shoppex')) refreshMarketView(typing);
+  else if(route==='place' && SHOP_PLACES.includes(arg)) refreshMarketView(typing);
   else if(route==='place' && arg==='parx'){ const a=$('#ppx-list'); if(a) a.innerHTML=parxListHTML(); const c=$('#ppx-citizens'); if(c) c.innerHTML=citizenCardsHTML(); }
   else if(!typing && ['region','parcel'].includes(route)) render(); },350); }
 async function socialInit(db, uid, u){
@@ -2981,6 +2989,7 @@ function viewRegion(id){
       </div>
       <div class="mini-frame"><div class="mini scene" data-scene="region" data-focus="${r.id}" aria-hidden="true"></div>${frameCorners()}</div>
     </div>
+    ${popCardHTML(r.id)}
     ${(r.pos.length||r.neg.length)?`<div class="balance"><div class="pos"><h2>Advantages</h2><ul>${r.pos.map(i=>`<li>${item(i)}</li>`).join('')}</ul></div><div class="neg"><h2>Constraints</h2><ul>${r.neg.map(i=>`<li>${item(i)}</li>`).join('')}</ul></div></div>`:''}
     <div class="cols">
       ${sec('Rules of the land', r.rules)}
@@ -3079,7 +3088,7 @@ function runSelfTests(){
   t('Presale QuarX can build but cannot be sold before release', ()=>{ const c=clone(); const r=presaleBuy(c,3); const lockedTrade=tradableQuarx(c)===0n && vestedQuarx(c)===3n*UNIT; useVested(c,2n*UNIT); return r.ok && lockedTrade && vestedQuarx(c)===UNIT && !presaleBuy(c,3).ok; });
   const shopper=()=>{ const c=clone(); c.rentals=[{place:'shoppex', start:Date.now(), end:Date.now()+86400000}]; postLedger(c,'mine-shop',[['quarx',5n*UNIT]],'t'); postLedger(c,'prod-shop',[['vegiex',10n*UNIT]],'t'); return c; };
   t('A shopfront needs a Shoppex lease and consumes its QuarX once', ()=>{ const c=clone(); postLedger(c,'mine-s0',[['quarx',5n*UNIT]],'t'); const noLease=!openShop(c,'Test').ok; const d=shopper(), a=openShop(d,'Test').ok, b=openShop(d,'Test').ok;
-    return noLease && a && !b && d.bal.quarx===String(5n*UNIT-BigInt(SIM.shopfrontQuarx)*UNIT) && d.locked.quarx==='0' && d.ledger.some(e=>e.op==='shop-build-main'&&e.to==='consumed:shopfront') && reconcile(d); });
+    return noLease && a && !b && d.bal.quarx===String(5n*UNIT-BigInt(SHOP_TERR.xetropolitan.quarx)*UNIT) && d.locked.quarx==='0' && d.ledger.some(e=>e.op==='shop-build-main'&&e.to==='consumed:shopfront') && reconcile(d); });
   t('Shops list only what the citizen produced, and listed goods are reserved', ()=>{ const c=shopper(); openShop(c,'Test'); postLedger(c,'swap-forgex-in',[['livestox',4n*UNIT],['bux',-UNIT]],'t');
     const bought=!listGoods(c,'livestox',1,UNIT,'l1').ok, over=!listGoods(c,'vegiex',11,UNIT,'l2').ok, ok=listGoods(c,'vegiex',6,UNIT,'l3').ok, again=!listGoods(c,'vegiex',5,UNIT,'l4').ok;
     return bought && over && ok && again && c.locked.vegiex===String(6n*UNIT) && c.bal.vegiex===String(4n*UNIT) && reconcile(c); });
@@ -3093,6 +3102,19 @@ function runSelfTests(){
     o.status='declined'; const a=marketRefund(b,o), c2=marketRefund(b,o); return cant && a && !c2 && BigInt(b.bal.bux)===bux0 && !marketReceive(b,o) && reconcile(b) && reconcile(s); });
   t('Taking goods down returns only what is left', ()=>{ const s=shopper(); openShop(s,'Test'); listGoods(s,'vegiex',4,UNIT,'l1'); const o={oid:'o-t3', buyer:'B', seller:'S', ref:'l1', asset:'vegiex', qty:1, total:String(UNIT), fee:'0', status:'filled'};
     marketDeliver(s,o); const blocked=!unlistGoods(s,'l1',true).ok, ok=unlistGoods(s,'l1',false).ok; return blocked && ok && s.locked.vegiex==='0' && s.bal.vegiex===String(9n*UNIT) && !s.listings.length && reconcile(s); });
+  t('Each territory has its own shop: cost, goods and fee', ()=>{ const f=shopper(); f.rentals=[]; const farm=openShop(f,'Farm','farmx').ok && f.bal.quarx===String(3n*UNIT) && !listGoods(f,'quarx',1,UNIT,'q1').ok && listGoods(f,'vegiex',1,UNIT,'v1').ok;
+    const x=shopper(), post=openShop(x,'Post','xalp').ok && x.bal.quarx===String(UNIT) && !listGoods(x,'vegiex',1,UNIT,'v2').ok && SHOP_TERR.xalp.feeBps===0;
+    const lodgeFull=!openShop(shopper(),'Lodge','tundrax',50).ok, coopLater=!openShop(shopper(),'Co','ixeland').ok, m=shopper(); m.rentals=[]; const needsLease=!openShop(m,'City','xetropolitan').ok;
+    const two=shopper(); openShop(two,'One','farmx'); return farm && post && lodgeFull && coopLater && needsLease && !openShop(two,'Two','xalp').ok && reconcile(f) && reconcile(x); });
+  t('QuarX sale limit is one day of extraction and halves with each halving', ()=>{ const U=Number(UNIT); const c=clone(); postLedger(c,'mine-cap',[['quarx',20n*UNIT]],'t');
+    const halves=quarxSellCapU(seamRewardU(MINABLE_U*.5))*2n===quarxSellCapU(seamRewardU(0)) && quarxSellCapU(U)===BigInt(ECONOMY.dailySeams)*UNIT;
+    postLedger(c,'swap-forgex-cap',[['quarx',-BigInt(ECONOMY.dailySeams)*UNIT],['bux',UNIT]],'t'); return halves && quarxSellLeftU(c,U)===0n && quarxSellLeftU(clone(),U)===BigInt(ECONOMY.dailySeams)*UNIT; });
+  t('Homes open in five stages; each needs 90% of the one before', ()=>{ const sum=Object.values(POP.share).reduce((a,b)=>a+b,0), gate=Math.round(.9*popOpenTotal()*POP.stages[0]);
+    return Math.abs(sum-1)<1e-9 && popOpenTotal()===18060000 && capacityAt('xetropolitan',0)===84000 && popStage({})===0 && popStage({xetropolitan:gate-1})===0 && popStage({xetropolitan:gate})===1 && popStage({xetropolitan:popOpenTotal()})===POP.stages.length-1; });
+  t('Xasteland opens only when 90% of all open homes are lived in', ()=>xastelandThreshold()===16254000 && !xastelandOpens({xetropolitan:16253999}) && xastelandOpens({xetropolitan:8000000, farmx:8254000}));
+  t('A full stage admits no new residents until the next stage opens', ()=>{ const c=clone(); c.currentRegion='farmx'; const full=!acquireParcel(c,'FX-A-01',{farmx:capacityAt('farmx',0)}).ok; return full && acquireParcel(c,'FX-A-02',{farmx:1}).ok; });
+  t('The House on the River is eternal', ()=>{ const h=PBY['AQX-01'], c=clone(); c.currentRegion='aquax';
+    return h.eternal && h.name==='The House on the River' && parcelAvail(h,c)==='HELD' && ['Transfer','Sale','Taxation','Demolition'].every(x=>h.excluded.includes(x)) && !acquireParcel(c,'AQX-01').ok; });
   t('Your wallet reconciles with the ledger', ()=>reconcile(state));
   return T;
 }
@@ -3109,6 +3131,7 @@ function viewEconomy(){
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Civilization ledger</h1><p class="lede">Where every unit in your Xland comes from and where it goes. Treasuries, escrow and burns are ledger accounts, not magic balances.</p></div><span class="sim-badge">Simulation ${ECON_VERSION}</span></div>
     ${serverMode?`<h2 class="display eh">The world ledger</h2><p class="lede" style="margin-bottom:1rem">Kept by the server for all citizens together: no one can change these numbers from their own device.</p><div id="econ-world" class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
+    ${popTableHTML()}
     <h2 class="display eh">Territory economy matrix</h2><div class="tbl"><table class="wide"><thead><tr><th>Territory</th><th>Role</th><th>Outputs</th><th>Inputs</th><th>Constraint</th><th>Dependency value</th></tr></thead><tbody>${REGIONS.map(r=>{ const P=PROFILE[r.id]; return `<tr><td><b>${esc(r.name)}</b></td><td>${esc(P.role)}</td><td>${esc(P.outputs)}</td><td>${esc(P.inputs)}</td><td>${esc(TERR[r.id].constraint)}</td><td>${esc(P.dependency)}</td></tr>`; }).join('')}</tbody></table></div>
     <h2 class="display eh">Imports and exports</h2><div class="tbl"><table class="wide"><thead><tr><th>From</th><th>To</th><th>Flow</th><th>Why</th><th>Status</th><th>Route now</th></tr></thead><tbody>${FLOWS.map(([f,t,fl,w,st])=>`<tr><td>${esc(R[f].name)}</td><td>${esc(R[t].name)}</td><td>${esc(fl)}</td><td>${esc(w)}</td><td>${esc(st)}</td><td>${routeDisrupted(f,t)?'<b style="color:var(--warn)">Disrupted</b>':'Normal'}</td></tr>`).join('')}</tbody></table></div>
     <h2 class="display eh">Simulation lab</h2><p class="meta" style="margin-bottom:.8rem">World Architect tool for the prototype. Trigger a configured disruption and watch it change routes, extraction and harvests. Magnitudes are simulation parameters.</p>
@@ -3185,7 +3208,7 @@ function capabilities(){ const s=state, out=[], cap=(n,ok,why,go)=>out.push({n,o
   cap('Extract QuarX', s.passport&&s.currentRegion==='xalp'&&!s.mine&&minedToday()<quarxCap(), !s.passport?'Needs a passport.':s.currentRegion!=='xalp'?'You must be in Xalp.':minedToday()>=quarxCap()?'Capacity used up today.':s.mine?'A seam is in progress.':'Ready.', '#/place/quarx');
   cap('Trade', s.passport&&bux>0n, s.passport?'Markets are places: trade where you stand, under local law.':'Needs a passport.', '#/place/forgex');
   { const avail=PARCELS.filter(pp=>parcelAvail(pp)==='AVAILABLE'); cap('Acquire property', s.passport&&avail.length>0, !s.passport?'Needs a passport.':avail.length?`${avail.length} parcels available; acquisition happens on site.`:'No parcels available right now.', '#/place/homax'); }
-  cap('Sell to citizens', !!s.shop&&shopIsOpen(), !s.shop?'Lease a Shoppex unit in Plaxa and build a shopfront with QuarX.':!shopIsOpen()?'Your Shoppex lease has ended.':`Your shop ${s.shop.name} is open in Plaxa.`, '#/place/shoppex');
+  cap('Sell to citizens', !!s.shop&&shopIsOpen(), !s.shop?'Build a shop with QuarX in an open territory: Plaxa, a farm stand, a green stall, a trading post or a lodge.':!shopIsOpen()?'Your Shoppex lease has ended.':`${s.shop.name} is open in ${R[shopT(s)].name}.`, s.shop?'#/place/'+SHOP_TERR[shopT(s)].place:'#/place/plaxa');
   cap('Construct', !s.builds.length&&lawOn('permit-special')&&q>=BigInt(SIM.monumentQuarx)*UNIT, s.builds.length?'Your Special Building is complete.':!lawOn('permit-special')?'Needs a passed motion at CompleX.':q<BigInt(SIM.monumentQuarx)*UNIT?'Needs QuarX from Xalp.':'Ready at the Civic plaza.', '#/place/civicsite');
   cap('Use institutions', !!s.passport, s.passport?'Institutions open to Hotex Guests and above.':'Needs a passport.', '#/place/xcool');
   cap('Govern', eligibleToVote(), eligibleToVote()?'Eligible under sandbox rules. Lex thresholds and vote weight remain TBD.':'Needs residency under sandbox rules. Lex rules are TBD.', '#/place/complex');
@@ -3207,7 +3230,7 @@ function viewProfile(){
     <div class="pp-artifact glass">${guilloche()}
       <span class="pp-crest">${s.affinity&&R[s.affinity]?emblem(s.affinity,77):compassRose('xl-emblem')}</span>
       <div class="pp-top"><span class="pp-emblem">${ICON.mark}</span><div><p class="meta">XLAND passport · simulated identity</p><p class="meta">Citizen ID <b>${esc(s.passportId)}</b></p></div><span class="sim-badge">${esc(identityName())}</span></div>
-      <h1 class="display" dir="auto">${esc(s.handle)}</h1>${s.title?`<p class="people" style="margin:0">${esc(ACH.find(a=>a.id===s.title).name)}</p>`:''}${s.shop?`<p class="pp-licence"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${shopIsOpen()?'open':'locked'}"/></svg><span><b>Merchant licence</b> <a class="link" href="#/place/shoppex" dir="auto">${esc(s.shop.name)}</a>, Shoppex in Plaxa${shopIsOpen()?'':' (closed)'}</span></p>`:''}
+      <h1 class="display" dir="auto">${esc(s.handle)}</h1>${s.title?`<p class="people" style="margin:0">${esc(ACH.find(a=>a.id===s.title).name)}</p>`:''}${s.shop?`<p class="pp-licence"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${shopIsOpen()?'open':'locked'}"/></svg><span><b>Merchant licence</b> <a class="link" href="#/place/${SHOP_TERR[shopT(s)].place}" dir="auto">${esc(s.shop.name)}</a>, ${esc(shopKind(shopT(s)).toLowerCase())} in ${esc(R[shopT(s)].name)}${shopIsOpen()?'':' (closed)'}</span></p>`:''}
       <ol class="ladder" aria-label="Identity states">${LADDER.map((l,k)=>`<li class="${k<li?'done':k===li?'now':''}"><b>${l.name}</b><span>${k<=li?esc(l.meaning):esc(l.how)}</span></li>`).join('')}</ol>
       <dl class="kv" style="margin-top:1.4rem"><dt>Arrived</dt><dd>${fmtDate(s.createdAt)} at Hotex</dd><dt>Authentication</dt><dd>${serverMode?'Citizen key on this device, shared world of xland.world':accountLinked?'Signed-in account, linked':'Local browser session'}. Separate from citizenship.</dd><dt>Administrative state</dt><dd>None. Restriction requires an auditable policy reason.</dd></dl>
       <div class="swap-row" style="margin-top:1rem"><label class="meta" for="pp-name">Display name (your citizen ID never changes)</label><div style="display:flex;gap:.6rem"><input class="input" id="pp-name" dir="auto" maxlength="24" style="flex:1;min-width:0" value="${esc(s.handle)}"><button class="btn btn-quiet" data-act="p-name">Save</button></div></div>
@@ -3417,6 +3440,7 @@ function quote(vid){
   const rule=evaluate(v.region,'trade',{asset:sw.asset}); if(!rule.ok) return {ok:false, err:rule.law, law:true, key:rule.key};
   const rate=BigInt(SIM.rates[sw.asset]), log=v.logisticsFor.includes(sw.asset)?BigInt(vid==='forgex'?forgexBps():v.logisticsBps):0n;
   if(sw.dir==='sell'){
+    if(sw.asset==='quarx' && amt>quarxSellLeftU(state)) return {ok:false, err:`Daily QuarX sale limit: ${fmtAmt(quarxSellLeftU(state))} of ${fmtAmt(quarxSellCapU())} QuarX left today. One day's extraction can be sold per day, and the limit halves with every halving, like Bitcoin.`};
     if(sw.asset==='quarx' && amt>tradableQuarx()) return {ok:false, err:`Presale QuarX can be used to build but not sold before ${fmtDate(state.vestedUntil||Date.now())}. Tradable now: ${fmtAmt(tradableQuarx())} QuarX.`};
     if(BigInt(state.bal[sw.asset])<amt) return {ok:false, err:`You hold ${fmtAmt(state.bal[sw.asset])} ${AS[sw.asset].sym}.`};
     const cross=ORIGIN[sw.asset]&&ORIGIN[sw.asset]!==v.region, gross=amt*rate, logistics=gross*log/10000n, burn=cross?gross*BigInt(SIM.crossBurnBps)/10000n:0n, split=resaleSplit(sw.asset,amt), resaleFee=split.second*rate*BigInt(SIM.resaleBps)/10000n, net=gross-logistics-v.feeBase-burn-resaleFee; if(net<=0n) return {ok:false, err:'This amount is too small to cover the costs.'};
@@ -3518,45 +3542,70 @@ function actResort(){
     <div class="choices">${opts.map(([n,l])=>{ const price=n*SIM.resortNight, ok=BigInt(state.bal.bux)>=BigInt(price)*UNIT;
       return `<div class="choice glass"><b>${l}</b><p class="meta">${price} BuX. Tax: none.${expTag}</p><button class="btn btn-quiet" data-act="rent" data-id="resort" data-n="${n}" ${ok&&!active?'':'disabled'}>Rent</button></div>`; }).join('')}</div>`;
 }
-/* ---------------- Plaxa market: citizen shops ----------------
-   A citizen with a Shoppex lease builds a shopfront (its QuarX is consumed for good) and lists goods they produced
-   themselves; listed goods are reserved. Orders live in the server's order book, which never oversells a listing and
-   moves each order through paid → filled | declined | cancelled exactly once. Each side then settles its own wallet
-   from that status, and every settlement has a unique ledger op, so repeating a sync can never pay twice.
-   Rates are provisional alpha parameters (worker.js MARKET mirrors them). */
-SIM.shopfrontQuarx = 3; SIM.marketFeeBps = 100; SIM.marketCancelHours = 24; SIM.maxListings = 6;
+/* ---------------- Citizen shops in every territory ----------------
+   A citizen builds one shopfront in an open territory (its QuarX is consumed for good) and lists goods they produced
+   themselves; listed goods are reserved. Each territory has its own kind of shop: what it may sell, what the shopfront
+   costs and whether a market fee goes to the territory treasury (tax-free lands take none). Orders live in the server's
+   order book, which never oversells a listing and moves each order through paid → filled | declined | cancelled exactly
+   once. Each side then settles its own wallet from that status, and every settlement has a unique ledger op, so
+   repeating a sync can never pay twice. Rates are provisional alpha parameters (worker.js MARKET mirrors them). */
+SIM.marketCancelHours = 24; SIM.maxListings = 6; SIM.shopInactiveDays = 30;
 const MKT_ASSETS = ['vegiex','livestox','quarx'];
+const SHOP_TERR = {
+  xetropolitan:{ kind:'Shop', place:'shoppex', market:'plaxa', quarx:5, lease:true, assets:['vegiex','livestox','quarx'], feeBps:100, why:'The largest market, with every kind of goods. Needs a Shoppex lease; urban tax applies.' },
+  farmx:{ kind:'Farm stand', place:'farmxswap', quarx:2, assets:['vegiex','livestox'], feeBps:100, why:'Farm goods straight from the field, with no transportation cost on site.' },
+  ximberland:{ kind:'Green stall', place:'greenx', quarx:3, assets:['vegiex'], feeBps:100, why:'Approved green goods only, under the law of the forest.' },
+  xalp:{ kind:'Trading post', place:'quarx', quarx:4, assets:['quarx'], feeBps:0, why:'QuarX straight from the mine. Xalp is tax-free, so no market fee.' },
+  tundrax:{ kind:'Trading lodge', place:'tundraxhomes', quarx:6, assets:['vegiex','livestox','quarx'], feeBps:0, max:50, why:'Only fifty lodges will ever trade on the tundra. No tax, so no market fee.' },
+  ixeland:{ kind:'Cooperative', place:'commons', soon:'Cooperative shops, built and shared by up to five Xelians, open in the next step.' },
+  xahara:{ kind:'Bazaar stall', place:'bazaar', soon:'Free stalls for rare and digital assets open in the next step: the first gateway to digital stores outside Xland.' }
+};
+const SHOP_PLACES = Object.values(SHOP_TERR).flatMap(c=>[c.place,c.market]).filter(Boolean);
 const symOf = a => (ASSETS.find(x=>x.id===a)||{sym:a}).sym;
 const market = { buying:[], selling:[], at:0, busy:false, err:'' };
 const hasOp = (st,op) => st.ledger.some(e=>e.op===op);
+const shopT = st => { st=st||state; return st.shop ? (st.shop.t||'xetropolitan') : null; };
+const shopKind = t => (SHOP_TERR[t]||SHOP_TERR.xetropolitan).kind;
 function shopLeaseEnd(st){ st=st||state; return Math.max(0, ...(st.rentals||[]).filter(r=>r.place==='shoppex').map(r=>r.end)); }
-function shopIsOpen(st){ return shopLeaseEnd(st) > Date.now(); }
+/* Only Xetropolitan shops need a lease; elsewhere a shop stays open while its merchant keeps coming back. */
+function shopIsOpen(st, t){ st=st||state; t=t||shopT(st)||'xetropolitan'; return SHOP_TERR[t].lease ? shopLeaseEnd(st)>Date.now() : true; }
 function sumLedger(st, f){ return st.ledger.filter(f).reduce((a,e)=>a+BigInt(e.qty||'0'),0n); }
+/* QuarX sale limit, like Bitcoin: a citizen may sell at most one day's extraction (seams a day × reward per seam).
+   Each halving halves the reward, and so the limit, across Forgex and every shop. */
+const utcDay0 = () => { const d=new Date(); d.setUTCHours(0,0,0,0); return d.getTime(); };
+function quarxSellCapU(rewardU){ const r=rewardU!=null?rewardU:(world&&world.quarx?world.quarx.reward:seamRewardU(0)); return BigInt(ECONOMY.dailySeams)*BigInt(Math.floor(r)); }
+function quarxSoldTodayU(st){ const d0=utcDay0(); return sumLedger(st,e=>e.asset==='quarx'&&e.at>=d0&&((e.event==='SWAP'&&BigInt(e.delta||'0')<0n)||e.op.startsWith('mkt-list-'))); }
+function quarxSellLeftU(st, rewardU){ const l=quarxSellCapU(rewardU)-quarxSoldTodayU(st||state); return l>0n?l:0n; }
+const quarxCapText = () => `You can sell up to ${fmtAmt(quarxSellCapU())} QuarX a day (one day's extraction). The limit halves with every halving, like Bitcoin. Left today: ${fmtAmt(quarxSellLeftU(state))} QuarX.`;
 /* Only what the citizen produced, less what they already sold elsewhere or listed: shops are for makers, not flippers. */
 function listableUnits(st, asset){
   const made=sumLedger(st,e=>e.asset===asset&&e.event==='PRODUCTION'&&BigInt(e.delta||'0')>0n);
   const soldElsewhere=sumLedger(st,e=>e.asset===asset&&e.event==='SWAP'&&BigInt(e.delta||'0')<0n);
   const listed=sumLedger(st,e=>e.asset===asset&&e.op.startsWith('mkt-list-'))-sumLedger(st,e=>e.asset===asset&&e.op.startsWith('mkt-unlist-'));
-  const have=asset==='quarx'?tradableQuarx(st):BigInt(st.bal[asset]||'0'), quota=made-soldElsewhere-listed;
-  const n=quota<have?quota:have; return n>0n?n/UNIT:0n; }
+  let have=asset==='quarx'?tradableQuarx(st):BigInt(st.bal[asset]||'0'); if(asset==='quarx'){ const left=quarxSellLeftU(st); if(left<have) have=left; }
+  const quota=made-soldElsewhere-listed, n=quota<have?quota:have; return n>0n?n/UNIT:0n; }
 function deliveredUnits(st, ref){ return sumLedger(st,e=>e.op.startsWith('mkt-deliver-')&&e.ref===ref)/UNIT; }
 function listingLeft(st, l){ return BigInt(l.qty)-deliveredUnits(st,l.ref); }
-function openShop(st, name){ name=String(name||'').trim().replace(/\s+/g,' ');
+function openShop(st, name, t, tally){ name=String(name||'').trim().replace(/\s+/g,' '); t=t||'xetropolitan'; const c=SHOP_TERR[t];
   if(!st.passport) return {ok:false, why:'Needs a passport.'};
-  if(st.shop) return {ok:false, why:'Your shopfront is already built.'};
-  if(!shopIsOpen(st)) return {ok:false, why:'Lease a Shoppex unit first.'};
+  if(st.shop) return {ok:false, why:`You already keep ${st.shop.name} in ${R[shopT(st)].name}. A citizen keeps one shop.`};
+  if(!c || c.soon) return {ok:false, why:c?c.soon:'Shops cannot be built in this territory.'};
+  if(c.lease && !shopIsOpen(st,t)) return {ok:false, why:'Lease a Shoppex unit first.'};
+  if(c.max && (tally||0)>=c.max) return {ok:false, why:`All ${c.max} ${c.kind.toLowerCase()}s of ${R[t].name} are taken.`};
   if(name.length<2||name.length>32) return {ok:false, why:'Give your shop a name of 2 to 32 characters.'};
-  const q=BigInt(SIM.shopfrontQuarx)*UNIT; if(BigInt(st.bal.quarx||'0')<q) return {ok:false, why:`A shopfront needs ${SIM.shopfrontQuarx} QuarX from Xalp.`};
-  if(!lockLedger(st,'shop-lock-main','LOCK','quarx',q,`Shopfront for ${name}: QuarX reserved`,'shoppex')) return {ok:false, why:'Already processed.'};
-  useVested(st,q); lockLedger(st,'shop-build-main','CONSUME','quarx',q,`Shopfront built in Plaxa: ${name}`,'shoppex','consumed:shopfront');
-  st.shop={name, at:Date.now()}; return {ok:true}; }
+  const q=BigInt(c.quarx)*UNIT; if(BigInt(st.bal.quarx||'0')<q) return {ok:false, why:`A ${c.kind.toLowerCase()} in ${R[t].name} needs ${c.quarx} QuarX from Xalp.`};
+  if(!lockLedger(st,'shop-lock-main','LOCK','quarx',q,`${c.kind} for ${name}: QuarX reserved`,c.place)) return {ok:false, why:'Already processed.'};
+  useVested(st,q); lockLedger(st,'shop-build-main','CONSUME','quarx',q,`${c.kind} built in ${R[t].name}: ${name}`,c.place,'consumed:shopfront');
+  st.shop={name, t, at:Date.now()}; return {ok:true}; }
 function listGoods(st, asset, qty, price, ref){
   if(!st.shop) return {ok:false, why:'Build your shopfront first.'};
+  const t=shopT(st), c=SHOP_TERR[t];
   if(!shopIsOpen(st)) return {ok:false, why:'Your Shoppex lease has ended. Renew it to trade.'};
-  if(!MKT_ASSETS.includes(asset)) return {ok:false, why:'This shop cannot sell that.'};
+  if(!MKT_ASSETS.includes(asset) || !c.assets.includes(asset)) return {ok:false, why:`A ${c.kind.toLowerCase()} in ${R[t].name} sells only ${c.assets.map(symOf).join(', ')}.`};
   if(!Number.isInteger(qty)||qty<1||qty>1000) return {ok:false, why:'List a whole quantity from 1 to 1,000.'};
   if(typeof price!=='bigint'||price<1n||price>1000000n*UNIT) return {ok:false, why:'Set a price per unit, up to 1,000,000 BuX.'};
   if((st.listings||[]).length>=SIM.maxListings) return {ok:false, why:`A shop holds up to ${SIM.maxListings} listings.`};
+  if(asset==='quarx' && BigInt(qty)*UNIT>quarxSellLeftU(st)) return {ok:false, why:`Daily QuarX sale limit: ${fmtAmt(quarxSellLeftU(st))} of ${fmtAmt(quarxSellCapU())} QuarX left today. It halves with every halving.`};
   const can=listableUnits(st,asset); if(BigInt(qty)>can) return {ok:false, why:`You can list only what you produced yourself: ${can} ${symOf(asset)} available.`};
   if(!lockLedger(st,'mkt-list-'+ref,'LOCK',asset,BigInt(qty)*UNIT,`Listed in ${st.shop.name}: ${qty} ${symOf(asset)} at ${fmtAmt(price)} BuX each`,ref)) return {ok:false, why:'Already listed.'};
   st.listings=st.listings||[]; st.listings.push({ref, asset, qty, price:price.toString(), at:Date.now()}); return {ok:true}; }
@@ -3566,31 +3615,33 @@ function unlistGoods(st, ref, pending){
   const left=listingLeft(st,l)*UNIT;
   if(left>0n && !lockLedger(st,'mkt-unlist-'+ref,'UNLOCK',l.asset,left,`Taken down from ${st.shop?st.shop.name:'your shop'}`,ref)) return {ok:false, why:'Already taken down.'};
   st.listings=st.listings.filter(x=>x!==l); return {ok:true}; }
-function marketPay(st, o, shopName){ return postLedger(st,'mkt-pay-'+o.oid,[['bux',-BigInt(o.total),'escrow:plaxa']],`Order at ${shopName||'a Plaxa shop'}: ${o.qty} ${symOf(o.asset)}, paid into escrow`,o.oid); }
+function marketPay(st, o, shopName){ return postLedger(st,'mkt-pay-'+o.oid,[['bux',-BigInt(o.total),'escrow:market']],`Order at ${shopName||'a citizen shop'}: ${o.qty} ${symOf(o.asset)}, paid into escrow`,o.oid); }
 function marketReceive(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-refund-'+o.oid)) return false;
-  return postLedger(st,'mkt-recv-'+o.oid,[[o.asset,BigInt(o.qty)*UNIT,'shop:'+o.seller]],`Delivered from a Plaxa shop: ${o.qty} ${symOf(o.asset)}`,o.oid); }
+  return postLedger(st,'mkt-recv-'+o.oid,[[o.asset,BigInt(o.qty)*UNIT,'shop:'+o.seller]],`Delivered from a citizen shop: ${o.qty} ${symOf(o.asset)}`,o.oid); }
 function marketRefund(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-recv-'+o.oid)) return false;
-  return postLedger(st,'mkt-refund-'+o.oid,[['bux',BigInt(o.total),'escrow:plaxa']],`Order ${o.status==='declined'?'declined by the merchant':'cancelled'}: BuX returned from escrow`,o.oid); }
+  return postLedger(st,'mkt-refund-'+o.oid,[['bux',BigInt(o.total),'escrow:market']],`Order ${o.status==='declined'?'declined by the merchant':'cancelled'}: BuX returned from escrow`,o.oid); }
 function canDeliver(st, o){ const l=(st.listings||[]).find(x=>x.ref===o.ref); return !!l && l.asset===o.asset && listingLeft(st,l)>=BigInt(o.qty) && BigInt((st.locked||{})[o.asset]||'0')>=BigInt(o.qty)*UNIT; }
 function marketDeliver(st, o){ if(hasOp(st,'mkt-deliver-'+o.oid) || !canDeliver(st,o)) return false;
-  const fee=BigInt(o.fee), net=BigInt(o.total)-fee, shop=st.shop?st.shop.name:'your shop';
+  const fee=BigInt(o.fee), net=BigInt(o.total)-fee, shop=st.shop?st.shop.name:'your shop', t=shopT(st)||'xetropolitan';
   lockLedger(st,'mkt-deliver-'+o.oid,'CONSUME',o.asset,BigInt(o.qty)*UNIT,`Sold in ${shop}: ${o.qty} ${symOf(o.asset)}`,o.ref,'buyer:'+o.buyer);
-  postLedger(st,'mkt-sale-'+o.oid,[['bux',net,'escrow:plaxa']],`Sale in ${shop} settled from escrow: ${fmtAmt(o.total)} BuX less ${fmtAmt(fee)} BuX market fee`,o.oid);
-  if(fee>0n) systemMove(st,'mkt-fee-'+o.oid,'TRANSFER','bux',fee,'escrow:plaxa','treasury:xetropolitan','Plaxa market fee to the Xetropolitan treasury','market');
+  postLedger(st,'mkt-sale-'+o.oid,[['bux',net,'escrow:market']],`Sale in ${shop} settled from escrow: ${fmtAmt(o.total)} BuX${fee>0n?` less ${fmtAmt(fee)} BuX market fee`:', no market fee'}`,o.oid);
+  if(fee>0n) systemMove(st,'mkt-fee-'+o.oid,'TRANSFER','bux',fee,'escrow:market','treasury:'+t,`Market fee to the ${R[t].name} treasury`,'market');
   const l=st.listings.find(x=>x.ref===o.ref); if(l && listingLeft(st,l)<=0n) st.listings=st.listings.filter(x=>x!==l);
   return true; }
 const openBuys = st => st.ledger.filter(e=>e.op.startsWith('mkt-pay-')).map(e=>e.op.slice(8)).filter(oid=>!hasOp(st,'mkt-recv-'+oid)&&!hasOp(st,'mkt-refund-'+oid));
-function marketWanted(){ const {route,arg}=parse(); return !!state.shop || openBuys(state).length>0 || (route==='place' && (arg==='plaxa'||arg==='shoppex')); }
+const onShopPlace = () => { const {route,arg}=parse(); return route==='place' && SHOP_PLACES.includes(arg); };
+function marketWanted(){ return !!state.shop || openBuys(state).length>0 || onShopPlace(); }
 async function marketSync(){ if(!serverBE || !state.passport || market.busy) return; market.busy=true; let changed=false; const notes=[];
-  try{ const j=await serverBE.call('GET','/market/orders'); market.buying=j.buying||[]; market.selling=j.selling||[]; market.at=Date.now(); market.err='';
+  try{ if(state.shop && !market.front){ await serverBE.call('POST','/shop/open?name='+encodeURIComponent(state.shop.name)+'&t='+shopT(state)); market.front=true; }   // idempotent: records the shopfront if an earlier call was lost
+    const j=await serverBE.call('GET','/market/orders'); market.buying=j.buying||[]; market.selling=j.selling||[]; market.at=Date.now(); market.err='';
     for(const o of market.selling){
       if(o.status==='paid'){
         if(canDeliver(state,o)){ try{ const r=await serverBE.call('POST','/market/fill?oid='+encodeURIComponent(o.oid)); Object.assign(o, r.order||{}, {status:'filled'}); }catch(e){ continue; } }
         else { try{ await serverBE.call('POST','/market/decline?oid='+encodeURIComponent(o.oid)); o.status='declined'; }catch(e){} continue; } }
       if(o.status==='filled' && marketDeliver(state,o)){ changed=true; notes.push(`Sold ${o.qty} ${symOf(o.asset)} in your shop.`);
-        if(state.ledger.filter(e=>e.op.startsWith('mkt-sale-')).length===1) chron('Market','First sale in Plaxa',`${state.shop?state.shop.name:'Your shop'} sold ${o.qty} ${symOf(o.asset)} to another citizen.`,'xetropolitan','notable'); } }
+        if(state.ledger.filter(e=>e.op.startsWith('mkt-sale-')).length===1) chron('Market','First sale',`${state.shop?state.shop.name:'Your shop'} sold ${o.qty} ${symOf(o.asset)} to another citizen.`,shopT(state)||'xetropolitan','notable'); } }
     for(const o of market.buying){
-      if(o.status==='filled' && marketReceive(state,o)){ changed=true; const sh=social.shops[o.seller]; notes.push(`Your order from ${sh&&sh.name||'a Plaxa shop'} arrived: ${o.qty} ${symOf(o.asset)}.`); }
+      if(o.status==='filled' && marketReceive(state,o)){ changed=true; const sh=social.shops[o.seller]; notes.push(`Your order from ${sh&&sh.name||'a citizen shop'} arrived: ${o.qty} ${symOf(o.asset)}.`); }
       if((o.status==='declined'||o.status==='cancelled') && marketRefund(state,o)){ changed=true; notes.push(`An order was ${o.status}; your BuX came back.`); } }
     if(market.buying.length<100){ const known=new Set(market.buying.map(o=>o.oid));   // escrow paid here, but the order never reached the server
       state.ledger.filter(e=>e.op.startsWith('mkt-pay-') && Date.now()-e.at>10*60000).forEach(e=>{ const oid=e.op.slice(8);
@@ -3598,66 +3649,127 @@ async function marketSync(){ if(!serverBE || !state.passport || market.busy) ret
   }catch(e){ market.err=e.message||'The market cannot be reached right now.'; }
   market.busy=false;
   if(changed){ save(); publishShop(); if(notes.length) toast(notes.join(' ')); }
-  const {route,arg}=parse(), typing=document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
-  if(route==='place' && (arg==='plaxa'||arg==='shoppex')) refreshMarketView(typing); }
+  const typing=document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+  if(onShopPlace()) refreshMarketView(typing); }
 function refreshMarketView(typing){ const {arg}=parse();
   if(!typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); return; }
   const sh=$('#shop-shelves'); if(sh) sh.innerHTML=shelfRows(); const sa=$('#shop-sales'); if(sa) sa.innerHTML=salesHTML(); const bo=$('#mkt-orders'); if(bo) bo.innerHTML=ordersTable(market.buying,'buy'); }
-async function publishShop(){ if(!social.db || !social.me || !state.shop || !social.writable) return;
-  const doc={ v:1, name:state.shop.name, handle:(state.privacy||{}).name!=='private'?state.handle:'', openUntil:shopLeaseEnd(), at:Date.now(),
+async function publishShop(){ if(!social.db || !social.me || !state.shop || !social.writable) return; const t=shopT(state);
+  const doc={ v:2, name:state.shop.name, t, kind:shopKind(t), handle:(state.privacy||{}).name!=='private'?state.handle:'', at:Date.now(),
+    openUntil: SHOP_TERR[t].lease ? shopLeaseEnd() : Date.now()+SIM.shopInactiveDays*86400000,
     items:(state.listings||[]).map(l=>({ref:l.ref, asset:l.asset, qty:l.qty, left:Number(listingLeft(state,l)), price:Number(l.price)})) };
   try{ await social.db.doc('shops/'+social.me).set(doc); }catch(e){} }
 const ORDER_TEXT = { paid:['Waiting for the merchant','pending'], filled:['Delivered','ok'], declined:['Declined, refunded','no'], cancelled:['Cancelled, refunded','no'] };
-function orderRow(o, side){ const sh=social.shops[side==='buy'?o.seller:o.buyer], who=side==='buy'?(sh&&sh.name||'A Plaxa shop'):(citizenName(social.citizens.find(c=>c.id===o.buyer))), st=ORDER_TEXT[o.status]||[o.status,'pending'];
+function orderRow(o, side){ const sh=social.shops[side==='buy'?o.seller:o.buyer], who=side==='buy'?(sh&&sh.name||'A citizen shop'):(citizenName(social.citizens.find(c=>c.id===o.buyer))), st=ORDER_TEXT[o.status]||[o.status,'pending'];
   const canCancel=side==='buy' && o.status==='paid' && Date.now()-o.created>=SIM.marketCancelHours*3600000;
   return `<tr><td dir="auto">${esc(who)}</td><td>${o.qty} ${symOf(o.asset)}</td><td>${fmtAmt(BigInt(o.total))} BuX</td><td><span class="ord ord-${st[1]}">${st[0]}</span>${canCancel?` <button class="link link-muted" data-act="mkt-cancel" data-id="${esc(o.oid)}">Cancel</button>`:''}</td><td class="meta upd">${fmtDate(o.updated)}</td></tr>`; }
 function ordersTable(list, side){ return list.length?`<div class="tbl otbl"><table><thead><tr><th>${side==='buy'?'Shop':'Buyer'}</th><th>Goods</th><th>Total</th><th>Status</th><th class="upd">Updated</th></tr></thead><tbody>${list.slice(0,20).map(o=>orderRow(o,side)).join('')}</tbody></table></div>`:`<p class="meta">${side==='buy'?'No orders yet.':'No sales yet. Orders arrive here and settle by themselves while Xland is open.'}</p>`; }
 function shopsOffline(){ return `<div class="lawcard"><b>The market needs the shared world</b><p>Shops trade between real citizens on xland.world, and the shared world cannot be reached from this view. Reload the page in a moment.</p></div>`; }
+function shopTally(t){ return Object.values(social.shops||{}).filter(sh=>sh&&(sh.t||'xetropolitan')===t).length; }
+/* The build form for a territory: what the shop may sell, what it costs, and the checks before building. */
+function shopBuildHTML(t){ const c=SHOP_TERR[t], s=state, q=BigInt(s.bal.quarx||'0'), qn=BigInt(c.quarx)*UNIT, full=c.max&&shopTally(t)>=c.max;
+  return `<ul class="checks"><li class="ok">${esc(c.why)}</li><li class="${q>=qn?'ok':'no'}">${c.quarx} QuarX for the build (you hold ${fmtAmt(q)}). The QuarX is consumed for good.<span class="tag tag-prov">Provisional</span></li>
+    <li class="ok">Sells: ${c.assets.map(symOf).join(', ')}. Market fee: ${c.feeBps?`${c.feeBps/100}% to the ${esc(R[t].name)} treasury`:'none'}.</li>
+    ${c.max?`<li class="${full?'no':'ok'}">${shopTally(t)} of ${c.max} ${esc(c.kind.toLowerCase())}s taken</li>`:''}
+    <li class="${social.db?'ok':'no'}">Shared world reachable, so other citizens can find you</li></ul>
+    ${social.db?`<div class="swap-row" style="max-width:26rem"><label class="meta" for="shop-name">Name of your ${esc(c.kind.toLowerCase())}</label><input class="input" id="shop-name" dir="auto" maxlength="32" placeholder="${esc(s.handle||'My')}'s goods"></div>
+    <button class="btn btn-primary" data-act="shop-build" data-id="${t}" ${q>=qn&&!full?'':'disabled'}>Build ${esc(c.kind.toLowerCase())}</button>${q<qn?` <a class="link" href="#/region/xalp">Mine QuarX in Xalp</a>`:''}`:shopsOffline()}<div id="law-out"></div>`; }
+/* The merchant's own counter: shelves, the listing form and sales. */
+function shopManageHTML(){ const s=state, t=shopT(s), c=SHOP_TERR[t], open=shopIsOpen(s), end=shopLeaseEnd();
+  const opts=c.assets.map(a=>{ const n=listableUnits(s,a); return `<option value="${a}" ${n>0n?'':'disabled'}>${symOf(a)}: ${n} you can list</option>`; }).join('');
+  return `<div class="shop-head"><svg class="shop-mark" viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${open?'open':'locked'}"/></svg><div><h2 class="act-h" style="margin:0" dir="auto">${esc(s.shop.name)}</h2>
+      <p class="meta" style="margin:.2rem 0 0">${esc(c.kind)} in ${esc(R[t].name)} · ${c.lease?(open?`open until ${fmtDate(end)}`:'closed: the Shoppex lease has ended. Renew it to open again.'):'open while you keep coming back'}</p></div></div>
+    ${social.db?'':shopsOffline()}
+    <h3 style="margin:1.4rem 0 .5rem">On the shelves</h3><div id="shop-shelves">${shelfRows()}</div>
+    ${open?`<div class="mkt-form"><div class="swap-row"><label class="meta" for="ml-asset">Goods</label><select class="input" id="ml-asset">${opts}</select></div>
+      <div class="swap-row"><label class="meta" for="ml-qty">Quantity</label><input class="input" id="ml-qty" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric"></div>
+      <div class="swap-row"><label class="meta" for="ml-price">Price each (BuX)</label><input class="input" id="ml-price" inputmode="decimal" placeholder="${SIM.rates[c.assets[0]]}"></div>
+      <button class="btn btn-primary" data-act="mkt-list" ${(s.listings||[]).length>=SIM.maxListings?'disabled':''}>List goods</button></div>
+      <p class="meta">You can sell only what you produced yourself, so shops stay with makers rather than middlemen. Listed goods are reserved until they sell or you take them down. ${c.feeBps?`${c.feeBps/100}% of each sale goes to the ${esc(R[t].name)} treasury.`:`${esc(R[t].name)} is tax-free: no market fee.`}<span class="tag tag-prov">Provisional</span></p>
+      ${c.assets.includes('quarx')?`<p class="meta">${quarxCapText()}</p>`:''}`:''}
+    <div id="shop-sales">${salesHTML()}</div>`; }
+function shelfRows(){ const s=state, rows=(s.listings||[]).map(l=>{ const left=listingLeft(s,l); return `<tr><td><b>${symOf(l.asset)}</b></td><td>${left} of ${l.qty}</td><td>${fmtAmt(BigInt(l.price))} BuX</td><td><button class="link link-muted" data-act="mkt-unlist" data-id="${esc(l.ref)}">Take down</button></td></tr>`; }).join('');
+  return rows?`<div class="tbl"><table><thead><tr><th>Goods</th><th>Left</th><th>Price each</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="meta">Nothing listed yet.</p>'; }
+function salesHTML(){ const pend=market.selling.filter(o=>o.status==='paid'); return `<h3 style="margin:1.4rem 0 .5rem">Sales${pend.length?` <span class="tag tag-tbd">${pend.length} settling</span>`:''}</h3>${ordersTable(market.selling,'sell')}`; }
+/* Shops open in one territory: only citizens standing there can buy from them. */
+function shopCardsHTML(t){ const now=Date.now(), c=SHOP_TERR[t];
+  const shops=Object.entries(social.shops).filter(([id,sh])=>id!==social.me && sh && (sh.t||'xetropolitan')===t && sh.openUntil>now && (sh.items||[]).some(it=>it.left>0)).sort((a,b)=>(b[1].at||0)-(a[1].at||0));
+  const card=([id,sh])=>`<div class="shop-card glass"><div class="shop-card-h"><b dir="auto">${esc(sh.name)}</b><span class="meta" dir="auto">${esc(sh.kind||c.kind)} by ${esc(sh.handle||'An Xlander')}</span></div>
+    <ul class="shelf">${(sh.items||[]).filter(it=>it.left>0&&c.assets.includes(it.asset)).map(it=>`<li><span class="shelf-g"><b>${symOf(it.asset)}</b><span class="meta">${it.left} left · ${fmtAmt(BigInt(it.price))} BuX each</span></span>
+      <span class="shelf-buy"><input class="input" id="mq-${esc(it.ref)}" type="number" min="1" max="${it.left}" step="1" value="1" inputmode="numeric" aria-label="Quantity of ${symOf(it.asset)}"><button class="btn btn-primary" data-act="mkt-buy" data-seller="${esc(id)}" data-id="${esc(it.ref)}">Buy</button></span></li>`).join('')}</ul></div>`;
+  return `${market.err?`<div class="lawcard"><b>Market unreachable</b><p>${esc(market.err)}</p></div>`:''}<div class="shop-grid">${shops.length?shops.map(card).join(''):`<p class="meta">No ${esc(c.kind.toLowerCase())}s are open in ${esc(R[t].name)} right now.</p>`}</div>`; }
+const escrowNote = () => `You pay into escrow; the merchant's shop delivers by itself while they have Xland open, and their BuX is released only on delivery. An order not filled within ${SIM.marketCancelHours} hours can be cancelled for a full refund.`;
+/* The shop section added to each territory's market place (FarmXSwap, the Green exchange, the quarry, ...). */
+function territoryShopsHTML(t){ const c=SHOP_TERR[t]; if(!c || t==='xetropolitan') return '';
+  const head=`<div class="tshops"><h2 class="act-h">${esc(c.kind)}s of ${esc(R[t].name)}</h2>`;
+  if(c.soon) return `${head}<p class="meta">${esc(c.soon)}</p></div>`;
+  if(!state.passport || state.currentRegion!==t) return `${head}<p class="meta">${esc(c.why)} Be in ${esc(R[t].name)} to buy here or to open one.</p></div>`;
+  if(!social.db || !serverMode) return `${head}${shopsOffline()}</div>`;
+  const mine=shopT(state)===t?shopManageHTML():!state.shop?`<h3 style="margin:1.6rem 0 .5rem">Open a ${esc(c.kind.toLowerCase())} here</h3>${shopBuildHTML(t)}`:`<p class="meta" style="margin-top:1.2rem">You keep ${esc(state.shop.name)} in ${esc(R[shopT(state)].name)}. A citizen keeps one shop.</p>`;
+  return `${head}<p class="meta">${esc(c.why)} ${escrowNote()}</p>${shopCardsHTML(t)}<h3 style="margin:1.6rem 0 .5rem">Your orders</h3><div id="mkt-orders">${ordersTable(market.buying,'buy')}</div>${mine}</div>`; }
 function actShop(){
   const g=presence('xetropolitan'); if(g) return g;
   const end=shopLeaseEnd(), active=end>Date.now(), ok=BigInt(state.bal.bux)>=BigInt(SIM.shopRent)*UNIT, s=state;
   const lease=`<ul class="checks"><li class="ok">Territory: Xetropolitan, where Plaxa exists</li><li class="${active||ok?'ok':'no'}">Rent: ${SIM.shopRent} BuX for ${SIM.shopDays} days${expTag}</li>
     <li class="pending">Urban tax: applies to residents, rate TBD. ${s.homes.some(h=>h.region==='xetropolitan')?'You are a resident here.':'You are not a resident here.'}</li></ul>`;
   const renew=`<button class="btn ${active?'btn-quiet':'btn-primary'}" data-act="rent" data-id="shoppex" data-n="${SIM.shopDays}" ${ok?'':'disabled'}>${s.rentals.some(r=>r.place==='shoppex')?`Renew lease (+${SIM.shopDays} days)`:'Lease unit'}</button>`;
+  if(s.shop && shopT(s)!=='xetropolitan') return `<h2 class="act-h">Shoppex</h2><p class="meta">You keep ${esc(s.shop.name)}, a ${esc(shopKind(shopT(s)).toLowerCase())} in ${esc(R[shopT(s)].name)}. A citizen keeps one shop.</p><a class="btn btn-quiet" href="#/place/plaxa">Browse the Plaxa market</a>`;
   if(!s.shop){
-    if(!active) return `<h2 class="act-h">Lease a Shoppex unit</h2><p class="meta">Urban property inside Plaxa. With a lease you can build a shopfront and sell what you produce to other citizens. ${esc(TERR.xetropolitan.tax.note)}</p>${lease}${renew}`;
-    const q=BigInt(s.bal.quarx||'0'), qn=BigInt(SIM.shopfrontQuarx)*UNIT;
-    return `<h2 class="act-h">Build your shopfront</h2><p class="meta">Your lease runs until ${fmtDate(end)}. A shopfront turns the unit into a shop of your own: it adds a merchant licence to your passport and a place in the Plaxa market.</p>
-      <ul class="checks"><li class="ok">Shoppex lease active</li><li class="${q>=qn?'ok':'no'}">${SIM.shopfrontQuarx} QuarX for the build (you hold ${fmtAmt(q)}). The QuarX is consumed for good.<span class="tag tag-prov">Provisional</span></li>
-      <li class="${social.db?'ok':'no'}">Shared world reachable, so other citizens can find you</li></ul>
-      ${social.db?`<div class="swap-row" style="max-width:26rem"><label class="meta" for="shop-name">Shop name</label><input class="input" id="shop-name" dir="auto" maxlength="32" placeholder="${esc(s.handle||'My')}'s goods"></div>
-      <button class="btn btn-primary" data-act="shop-build" ${q>=qn?'':'disabled'}>Build shopfront</button>${q<qn?` <a class="link" href="#/region/xalp">Mine QuarX in Xalp</a>`:''}`:shopsOffline()}<div id="law-out"></div>`; }
-  const opts=MKT_ASSETS.map(a=>{ const n=listableUnits(s,a); return `<option value="${a}" ${n>0n?'':'disabled'}>${symOf(a)}: ${n} you can list</option>`; }).join('');
-  const rows=shelfRows();
-  return `<div class="shop-head"><svg class="shop-mark" viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${active?'open':'locked'}"/></svg><div><h2 class="act-h" style="margin:0" dir="auto">${esc(s.shop.name)}</h2>
-      <p class="meta" style="margin:.2rem 0 0">${active?`Open in Plaxa until ${fmtDate(end)}`:'Closed: the Shoppex lease has ended. Renew it to open again.'}</p></div></div>
-    ${social.db?'':shopsOffline()}
-    <h3 style="margin:1.4rem 0 .5rem">On the shelves</h3><div id="shop-shelves">${rows}</div>
-    ${active?`<div class="mkt-form"><div class="swap-row"><label class="meta" for="ml-asset">Goods</label><select class="input" id="ml-asset">${opts}</select></div>
-      <div class="swap-row"><label class="meta" for="ml-qty">Quantity</label><input class="input" id="ml-qty" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric"></div>
-      <div class="swap-row"><label class="meta" for="ml-price">Price each (BuX)</label><input class="input" id="ml-price" inputmode="decimal" placeholder="${SIM.rates.vegiex}"></div>
-      <button class="btn btn-primary" data-act="mkt-list" ${(s.listings||[]).length>=SIM.maxListings?'disabled':''}>List goods</button></div>
-      <p class="meta">You can sell only what you produced yourself, so shops stay with makers rather than middlemen. Listed goods are reserved until they sell or you take them down. ${SIM.marketFeeBps/100}% of each sale goes to the Xetropolitan treasury.<span class="tag tag-prov">Provisional</span></p>`:''}
-    <div id="law-out"></div>
-    <div id="shop-sales">${salesHTML()}</div>
-    <div style="margin-top:1.2rem;display:flex;gap:.6rem;flex-wrap:wrap">${renew}<a class="btn btn-quiet" href="#/place/plaxa">See the Plaxa market</a></div>`; }
-function shelfRows(){ const s=state, rows=(s.listings||[]).map(l=>{ const left=listingLeft(s,l); return `<tr><td><b>${symOf(l.asset)}</b></td><td>${left} of ${l.qty}</td><td>${fmtAmt(BigInt(l.price))} BuX</td><td><button class="link link-muted" data-act="mkt-unlist" data-id="${esc(l.ref)}">Take down</button></td></tr>`; }).join('');
-  return rows?`<div class="tbl"><table><thead><tr><th>Goods</th><th>Left</th><th>Price each</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="meta">Nothing listed yet.</p>'; }
-function salesHTML(){ const pend=market.selling.filter(o=>o.status==='paid'); return `<h3 style="margin:1.4rem 0 .5rem">Sales${pend.length?` <span class="tag tag-tbd">${pend.length} settling</span>`:''}</h3>${ordersTable(market.selling,'sell')}`; }
+    if(!active) return `<h2 class="act-h">Lease a Shoppex unit</h2><p class="meta">Urban property inside Plaxa. With a lease you can build a shopfront and sell what you produce to other citizens. Every open territory has its own kind of shop; Plaxa is the largest market and sells every kind of goods. ${esc(TERR.xetropolitan.tax.note)}</p>${lease}${renew}`;
+    return `<h2 class="act-h">Build your shopfront</h2><p class="meta">Your lease runs until ${fmtDate(end)}. A shopfront turns the unit into a shop of your own: it adds a merchant licence to your passport and a place in the Plaxa market.</p>${shopBuildHTML('xetropolitan')}`; }
+  return `${shopManageHTML()}<div style="margin-top:1.2rem;display:flex;gap:.6rem;flex-wrap:wrap">${renew}<a class="btn btn-quiet" href="#/place/plaxa">See the Plaxa market</a></div>`; }
 function actPlaxa(){
   const g=presence('xetropolitan'); if(g) return g;
   if(!social.db || !serverMode) return `<h2 class="act-h">The Plaxa market</h2>${shopsOffline()}`;
-  const now=Date.now(), shops=Object.entries(social.shops).filter(([id,sh])=>id!==social.me && sh && sh.openUntil>now && (sh.items||[]).some(it=>it.left>0)).sort((a,b)=>(b[1].at||0)-(a[1].at||0));
-  const card=([id,sh])=>`<div class="shop-card glass"><div class="shop-card-h"><b dir="auto">${esc(sh.name)}</b><span class="meta" dir="auto">by ${esc(sh.handle||'An Xlander')}</span></div>
-    <ul class="shelf">${(sh.items||[]).filter(it=>it.left>0&&MKT_ASSETS.includes(it.asset)).map(it=>`<li><span class="shelf-g"><b>${symOf(it.asset)}</b><span class="meta">${it.left} left · ${fmtAmt(BigInt(it.price))} BuX each</span></span>
-      <span class="shelf-buy"><input class="input" id="mq-${esc(it.ref)}" type="number" min="1" max="${it.left}" step="1" value="1" inputmode="numeric" aria-label="Quantity of ${symOf(it.asset)}"><button class="btn btn-primary" data-act="mkt-buy" data-seller="${esc(id)}" data-id="${esc(it.ref)}">Buy</button></span></li>`).join('')}</ul></div>`;
-  return `<h2 class="act-h">The Plaxa market</h2><p class="meta">Shops of real citizens. You pay into escrow; the merchant's shop delivers by itself while they have Xland open, and their BuX is released only on delivery. An order not filled within ${SIM.marketCancelHours} hours can be cancelled for a full refund.</p>
-    ${market.err?`<div class="lawcard"><b>Market unreachable</b><p>${esc(market.err)}</p></div>`:''}
-    <div class="shop-grid">${shops.length?shops.map(card).join(''):'<p class="meta">No shops are open right now. Lease a unit at Shoppex and be the first merchant.</p>'}</div>
+  return `<h2 class="act-h">The Plaxa market</h2><p class="meta">Shops of real citizens in Xetropolitan. ${escrowNote()}</p>
+    ${shopCardsHTML('xetropolitan')}
     <h3 style="margin:1.6rem 0 .5rem">Your orders</h3><div id="mkt-orders">${ordersTable(market.buying,'buy')}</div>
-    <p style="margin-top:1rem"><a class="link" href="#/place/shoppex">${state.shop?'Manage your shop':'Open a shop of your own'}</a></p>`; }
+    <p style="margin-top:1rem"><a class="link" href="#/place/shoppex">${shopT(state)==='xetropolitan'?'Manage your shop':state.shop?'Your shop':'Open a shop of your own'}</a></p>
+    <h3 style="margin:1.6rem 0 .5rem">Shops across Xland</h3><div class="tbl"><table><thead><tr><th>Territory</th><th>Kind</th><th>Sells</th><th>Shopfront</th><th>Fee</th></tr></thead><tbody>
+    ${Object.entries(SHOP_TERR).map(([t,c])=>`<tr><td><a class="link" href="#/place/${c.market||c.place}">${esc(R[t].name)}</a></td><td>${esc(c.kind)}</td><td>${c.soon?'Next step':c.assets.map(symOf).join(', ')}</td><td>${c.soon?'—':c.quarx+' QuarX'}</td><td>${c.soon?'—':c.feeBps?c.feeBps/100+'%':'None'}</td></tr>`).join('')}</tbody></table></div>`; }
 function worldMarketHTML(){ if(!world||!world.market) return ''; const m=world.market;
-  return `<div class="world-econ"><h3>The Plaxa market</h3><dl class="kv"><dt>Shopfronts built</dt><dd>${m.shopfronts.toLocaleString('en-US')}</dd><dt>QuarX consumed by shopfronts</dt><dd>${fmtU(m.quarxConsumed)} QuarX, out of circulation for good</dd><dt>Sales between citizens</dt><dd>${m.sales.toLocaleString('en-US')} worth ${fmtU(m.volume)} BuX</dd><dt>Fees to the Xetropolitan treasury</dt><dd>${fmtU(m.fees)} BuX (${m.feeBps/100}%)</dd></dl></div>`; }
+  return `<div class="world-econ"><h3>Citizen shops</h3><dl class="kv"><dt>Shopfronts built</dt><dd>${m.shopfronts.toLocaleString('en-US')}</dd><dt>QuarX consumed by shopfronts</dt><dd>${fmtU(m.quarxConsumed)} QuarX, out of circulation for good</dd><dt>Sales between citizens</dt><dd>${m.sales.toLocaleString('en-US')} worth ${fmtU(m.volume)} BuX</dd><dt>Fees to territory treasuries</dt><dd>${fmtU(m.fees)} BuX</dd><dt>QuarX sale limit</dt><dd>${fmtAmt(quarxSellCapU())} QuarX per citizen per day, halving with each halving</dd></dl></div>`; }
+/* ---------------- Population: 21,000,000 citizens, opened in stages ----------------
+   Founder decision: Xland holds 21,000,000 residents in all. Each territory has a fixed share; the dense city houses
+   the most in apartments and towers, harsh lands the fewest. Nothing opens at once: homes open in five stages, and the
+   next stage opens only when 90% of the current one is lived in. The two reserves open last: Xetland after its ten-year
+   lock, Xasteland when 90% of all open homes are lived in. Aquax is not counted: it holds one eternal residence. */
+const POP = { total:21000000, gateFill:0.9, stages:[0.01,0.05,0.2,0.5,1],
+  share:{ xetropolitan:.40, farmx:.12, ximberland:.12, xalp:.08, ixeland:.07, xahara:.06, tundrax:.01, xetland:.07, xasteland:.07 },
+  housing:{ xetropolitan:'Apartments and towers', farmx:'Farmsteads', ximberland:'Homax houses', xalp:'Mountain lodges', ixeland:'Domes', xahara:'Nomad tents', tundrax:'Scarce homes', xetland:'Reserved homes', xasteland:'Reserved frontier' },
+  reserve:['xetland','xasteland'] };
+const POP_OPEN = Object.keys(POP.share).filter(t=>!POP.reserve.includes(t));
+const popOpenTotal = () => Math.round(POP.total*POP_OPEN.reduce((a,t)=>a+POP.share[t],0));   // 18,060,000
+const popFull = t => Math.round(POP.total*POP.share[t]);
+const capacityAt = (t, k) => Math.round(POP.total*POP.share[t]*POP.stages[k]);
+const openResidents = res => POP_OPEN.reduce((a,t)=>a+(res[t]||0),0);
+/* Stage index (0-based): advances while the open territories together have filled 90% of the current stage. */
+function popStage(res){ const n=openResidents(res||{}); let k=0; while(k<POP.stages.length-1 && n>=POP.gateFill*popOpenTotal()*POP.stages[k]) k++; return k; }
+const xastelandThreshold = () => Math.round(POP.gateFill*popOpenTotal());   // 16,254,000
+const xastelandOpens = res => openResidents(res||{}) >= xastelandThreshold();
+function roomIn(t, res){ if(POP.share[t]==null || POP.reserve.includes(t)) return 0; return capacityAt(t,popStage(res))-((res||{})[t]||0); }
+/* Residents: one per citizen per territory where they hold land rights (shared registry plus this device). */
+function residentsNow(){ const by={}, seen={}, add=(t,who)=>{ const k=t+':'+who; if(seen[k]) return; seen[k]=1; by[t]=(by[t]||0)+1; };
+  Object.entries(social.claims||{}).forEach(([pid,c])=>{ const pp=PBY[pid]; if(pp && c && c.owner) add(pp.t,c.owner); });
+  (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(pp) add(pp.t,social.me||'me'); });
+  return by; }
+const fmtN = n => Math.round(n).toLocaleString('en-US');
+function popCardHTML(id){
+  if(id==='aquax') return `<div class="pop-card glass"><h2>Residents</h2><p class="lede" style="font-size:1rem;margin:0">One eternal residence, The House on the River. It is not counted among the 21,000,000 and is never for sale.</p></div>`;
+  if(POP.share[id]==null) return '';
+  const res=residentsNow(), k=popStage(res), full=popFull(id), here=res[id]||0;
+  if(id==='xetland') return `<div class="pop-card glass"><h2>Residents</h2><p class="meta" style="margin:0">${fmtN(full)} reserved homes (${Math.round(POP.share[id]*100)}% of 21,000,000). They open after the ten-year lock, in stages like every other land.</p></div>`;
+  if(id==='xasteland') return `<div class="pop-card glass"><h2>Residents</h2><p class="meta" style="margin:0">${fmtN(full)} reserved homes (${Math.round(POP.share[id]*100)}% of 21,000,000). Xasteland opens when 90% of all open homes are lived in: ${fmtN(xastelandThreshold())} residents. Today: ${fmtN(openResidents(res))}.</p></div>`;
+  const cap=capacityAt(id,k), pct=cap?Math.min(100,here/cap*100):0;
+  return `<div class="pop-card glass"><h2>Residents</h2><p class="meta" style="margin:0 0 .5rem">${esc(POP.housing[id])} · ${Math.round(POP.share[id]*100)}% of the 21,000,000 citizens Xland can hold</p>
+    <div class="econ-bar" role="img" aria-label="${here} of ${cap} homes taken"><span style="width:${Math.max(.6,pct)}%"></span></div>
+    <dl class="kv" style="margin-top:.7rem"><dt>Open now</dt><dd>${fmtN(cap)} homes, stage ${k+1} of ${POP.stages.length}</dd><dt>Lived in</dt><dd>${fmtN(here)}</dd><dt>When complete</dt><dd>${fmtN(full)} homes</dd></dl>
+    <p class="meta" style="margin:.4rem 0 0">The next stage opens across Xland when 90% of this one is lived in.</p></div>`; }
+function popTableHTML(){ const res=residentsNow(), k=popStage(res);
+  return `<h2 class="display eh">21,000,000 citizens</h2><p class="lede" style="margin-bottom:1rem">Xland can hold 21,000,000 residents. Each land has a fixed share, and homes open in five stages: the next one opens when 90% of the current stage is lived in. Now: stage ${k+1} of ${POP.stages.length}.</p>
+    <div class="tbl"><table class="wide"><thead><tr><th>Territory</th><th>Homes</th><th>Share</th><th>When complete</th><th>Open now</th><th>Lived in</th></tr></thead><tbody>
+    ${Object.keys(POP.share).map(t=>`<tr><td><a class="link" href="#/region/${t}">${esc(R[t].name)}</a></td><td>${esc(POP.housing[t])}</td><td>${Math.round(POP.share[t]*100)}%</td><td>${fmtN(popFull(t))}</td><td>${POP.reserve.includes(t)?(t==='xetland'?'After ten years':'At '+fmtN(xastelandThreshold())+' residents'):fmtN(capacityAt(t,k))}</td><td>${fmtN(res[t]||0)}</td></tr>`).join('')}
+    <tr><td><a class="link" href="#/region/aquax">Aquax</a></td><td>The House on the River</td><td>—</td><td>1, eternal</td><td>—</td><td>1</td></tr></tbody></table></div>`; }
 function floorText(price,years){ const b=parseAmt(String(price)); const y=Number(years); if(b===null||!(y>=0)) return 'Enter a price and a number of years.';
   const f=resaleFloor('tundrax',b,y*365.25*86400000); return `Minimum resale price: ${fmtAmt(f)} BuX (+${fmtAmt(f-b)} BuX protected).`; }
 function actTundrax(){
@@ -3825,7 +3937,8 @@ function actAssembly(){
     ${past.length?`<details class="archive" style="margin-top:1.4rem"><summary><b>Proposal archive (${past.length})</b></summary><ol class="motions">${past.slice().reverse().map(pcard).join('')}</ol></details>`:''}
     <details class="archive" style="margin-top:1rem"><summary><b>Governance records</b></summary><ol class="evlist">${state.events.filter(e=>/PROPOSAL|VOT|TALLY|EXECUT|LAW_|TREASURY|EMERGENCY/.test(e.t)).slice(-16).reverse().map(e=>`<li><code>${esc(e.t)}</code><span class="meta">${fmtDate(e.at)}</span></li>`).join('')||'<li class="meta">None yet.</li>'}</ol></details>`;
 }
-function activity(q){
+function activity(q){ const h=activityBase(q), t=Object.keys(SHOP_TERR).find(k=>k!=='xetropolitan'&&SHOP_TERR[k].place===q.id); return t ? h+territoryShopsHTML(t) : h; }
+function activityBase(q){
   switch(q.id){
     case 'complex': return actAssembly();
     case 'fields': return actFields(); case 'quarx': return actQuarx(); case 'farmxswap': return actSwap('farmxswap'); case 'forgex': return actSwap('forgex');
@@ -4070,17 +4183,17 @@ document.addEventListener('click', e=>{
       const t=Date.now(), from=pl==='shoppex'?Math.max(t,shopLeaseEnd()):t; state.rentals.push({place:pl, start:from, end:from+n*86400000, op});
       if(state.rentals.filter(r=>r.place===pl).length===1) chron('Rental', pl==='resort'?'First stay in Xalp':'First urban lease in Xetropolitan', pl==='resort'?`You rented a lodge for ${n} night${n>1?'s':''}.`:'You leased a Shoppex unit inside Plaxa.', region, 'ordinary');
       save(); render(); if(pl==='shoppex') publishShop(); toast(pl==='shoppex'&&state.shop?`Lease renewed until ${fmtDate(shopLeaseEnd())}.`:'Rental confirmed.'); break; }
-    case 'shop-build': { if(!here('xetropolitan')||!social.db) return; const inp=$('#shop-name'); const name=((inp&&inp.value)||'').trim()||`${state.handle||'An Xlander'}'s goods`;
-      const r=openShop(state,name); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot build yet</b><p>${esc(r.why)}</p></div>`; return; }
-      emit('SHOP_OPENED',{name}); chron('Market',`Shopfront opened: ${state.shop.name}`,`You built a shopfront in Plaxa, consuming ${SIM.shopfrontQuarx} QuarX. Your passport now carries a merchant licence.`,'xetropolitan','notable');
-      save(); render(); publishShop(); publishCitizen(); if(serverBE) serverBE.call('POST','/shop/open?name='+encodeURIComponent(state.shop.name)).then(refreshWorld).catch(()=>{});
+    case 'shop-build': { const t=id||'xetropolitan'; if(!here(t)||!social.db) return; const inp=$('#shop-name'); const name=((inp&&inp.value)||'').trim()||`${state.handle||'An Xlander'}'s goods`;
+      const r=openShop(state,name,t,shopTally(t)); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot build yet</b><p>${esc(r.why)}</p></div>`; return; }
+      emit('SHOP_OPENED',{name,t}); chron('Market',`${shopKind(t)} opened: ${state.shop.name}`,`You built a ${shopKind(t).toLowerCase()} in ${R[t].name}, consuming ${SHOP_TERR[t].quarx} QuarX. Your passport now carries a merchant licence.`,t,'notable');
+      save(); render(); publishShop(); publishCitizen(); if(serverBE) serverBE.call('POST','/shop/open?name='+encodeURIComponent(state.shop.name)+'&t='+t).then(refreshWorld).catch(()=>{});
       toast(`${state.shop.name} is open. List what you produce.`); break; }
-    case 'mkt-list': { if(!here('xetropolitan')) return; const asset=($('#ml-asset')||{}).value, qty=Number(($('#ml-qty')||{}).value), price=parseAmt(($('#ml-price')||{}).value);
+    case 'mkt-list': { if(!state.shop||!here(shopT(state))) return; const asset=($('#ml-asset')||{}).value, qty=Number(($('#ml-qty')||{}).value), price=parseAmt(($('#ml-price')||{}).value);
       const r=listGoods(state,asset,qty,price===null?0n:price,opId('l')); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot list</b><p>${esc(r.why)}</p></div>`; return; }
       save(); render(); publishShop(); toast(`Listed ${qty} ${symOf(asset)} in ${state.shop.name}.`); break; }
     case 'mkt-unlist': { const pending=market.selling.some(o=>o.ref===id&&o.status==='paid'); const r=unlistGoods(state,id,pending);
       if(!r.ok){ toast(r.why); if(pending) marketSync(); return; } save(); render(); publishShop(); toast('Taken down; the goods are back in your wallet.'); break; }
-    case 'mkt-buy': { if(!here('xetropolitan')||!serverBE) return; const seller=b.dataset.seller, sh=social.shops[seller], it=sh&&(sh.items||[]).find(x=>x.ref===id); if(!it||seller===social.me) return;
+    case 'mkt-buy': { const seller=b.dataset.seller, sh=social.shops[seller], it=sh&&(sh.items||[]).find(x=>x.ref===id); if(!it||seller===social.me||!serverBE) return; if(!here(sh.t||'xetropolitan')){ toast(`Be in ${R[sh.t||'xetropolitan'].name} to buy here.`); return; }
       const inp=document.getElementById('mq-'+id), qty=Math.floor(Number(inp&&inp.value||1)); if(!(qty>=1&&qty<=it.left)){ toast(`Choose a quantity from 1 to ${it.left}.`); return; }
       const total=BigInt(qty)*BigInt(it.price), oid=opId('o'); if(BigInt(state.bal.bux)<total){ toast('Not enough BuX.'); return; }
       if(!marketPay(state,{oid,total:total.toString(),qty,asset:it.asset},sh.name)){ toast('Not enough BuX.'); return; } save(); b.disabled=true;

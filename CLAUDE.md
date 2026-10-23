@@ -5,4 +5,5 @@
 - Game rules, economy and the API must not change as a side effect of UI work. Before pushing, run the local server (`node test/dev-server.mjs`) and check `#/tests`: all rule tests must pass.
 - The emblems and ornaments in `src/sprite.svg` are hand-drawn and approved by the founder. Regenerate only with `tools/build-sprite.sh`; never redraw them.
 - `wrangler.toml` has no routes on purpose: the xland.world domain and the `ADMIN_KEY` secret live in the Cloudflare dashboard.
-- The House on the River (Aquax) is the founder's: keep it tiny and unobtrusive.
+- The House on the River (Aquax, parcel AQX-01) is the founder's: keep it tiny and unobtrusive. It is eternal: no code may ever sell, transfer, tax, divide or reassign it, and the server refuses any claim on it.
+- Founder decisions on population (21,000,000 in five stages, shares per territory, Xasteland at 90% of open homes), shop costs per territory and the QuarX daily sale limit live in `POP`, `SHOP_TERR` (index.html) and `SHOPS` (worker.js). Change them only on the founder's word.
