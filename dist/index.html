@@ -898,6 +898,24 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 #app.no-anim .fade-in,#app.no-anim .world-panel,#app.no-anim .scard.pop{animation:none}
 @media (min-width:821px){ main:has(> .world),main:has(> .hero){padding-bottom:0} }
 
+/* Land plots on the map and in the codex */
+.pl.plot{font-size:13.5px;padding:.18rem .5rem .2rem .42rem}
+.pl.plot i{width:7px;height:7px;transform:none;border-radius:1px}
+.pl.plot.sale{color:#F3EAD3;border-color:rgba(243,234,211,.35)}
+.pl.plot.sale i{background:#F3EAD3;box-shadow:none}
+.pl.plot.held{color:#F1D9A0;border-color:rgba(216,186,124,.5);background:rgba(28,20,8,.78)}
+.pl.plot.held i{background:#D8BA7C;box-shadow:0 0 6px #D8BA7C}
+.plot-tag{display:inline-block;margin-top:.35rem;padding:.12rem .55rem;font-size:15px;font-weight:600;border:1px solid var(--line-strong);border-radius:3px;white-space:nowrap}
+.plot-tag.sale{color:var(--text);border-color:var(--gold);background:var(--gold-soft)}
+.plot-tag.held{color:var(--gold)}
+.plot-tag.mine{color:var(--cyan);border-color:var(--cyan)}
+.scard .plot-tag{color:#F1D9A0;border-color:rgba(216,186,124,.5);background:none}
+.world-panel,.scard{z-index:6}
+.sc-parcel .sc-name{font-size:1.3rem;white-space:nowrap}
+.sc-parcel span{display:block}
+.sc-parcel .plot-tag{display:inline-block;margin-top:.4rem}
+.pl.plot.sel{color:#fff;border-color:var(--gold);box-shadow:0 0 14px rgba(216,186,124,.5);z-index:2}
+
 </style>
 </head>
 <body>
@@ -1479,11 +1497,11 @@ function applySpoilage(st){ st=st||state; if(!st.passport) return false; const t
 const LAW_VERSION = 'law-v1';
 SIM.farmParcelPrice = 250; SIM.urbanLotPrice = 600;
 const PARCELS = [
-  ...[[247,326],[268,341],[238,346],[262,316]].map((at,i)=>({id:'XIM-R-0'+(i+1), t:'ximberland', d:'homes', at, zoning:['Residential'], building:'homax', price:SIM.homaxPrice,
+  ...[[247,326],[268,341],[238,346],[262,316],[222,332],[240,302],[222,314],[258,296],[270,362],[288,332]].map((at,i)=>({id:'XIM-R-'+String(i+1).padStart(2,'0'), t:'ximberland', d:'homes', at, zoning:['Residential'], building:'homax', price:SIM.homaxPrice,
     rights:['Ownership','Residence','Transfer under the resale floor'], excluded:['Construct (no residential recipe approved yet)','Convert use'], note:'Comes with a Homax, the residential path to citizenship.'})),
-  ...[[285,545],[318,556],[262,505]].map((at,i)=>({id:'FX-A-0'+(i+1), t:'farmx', d:'fields', at, zoning:['Agricultural'], price:SIM.farmParcelPrice,
+  ...[[285,545],[318,556],[262,505],[282,528],[306,540],[282,510],[264,528],[300,558]].map((at,i)=>({id:'FX-A-'+String(i+1).padStart(2,'0'), t:'farmx', d:'fields', at, zoning:['Agricultural'], price:SIM.farmParcelPrice,
     rights:['Ownership','Use: agriculture','Construct: Farmstead','Transfer'], excluded:['Residence','Non-agricultural construction'], note:'Productive land. A Farmstead here gives you your own plot.'})),
-  {id:'XET-U-01', t:'xetropolitan', d:'market', at:[478,452], zoning:['Commercial'], price:SIM.urbanLotPrice, rights:['Ownership','Use: commercial','Transfer'], excluded:['Construct (commercial recipes are feature-flagged)','Residence'], note:'Urban lot in the Market Quarter. Urban tax applies to residents; the rate is TBD.'},
+  ...[[478,452],[478,416],[442,410],[442,392],[502,446],[472,470]].map((at,i)=>({id:'XET-U-'+String(i+1).padStart(2,'0'), t:'xetropolitan', d:'market', at, zoning:['Commercial'], price:SIM.urbanLotPrice, rights:['Ownership','Use: commercial','Transfer'], excluded:['Construct (commercial recipes are feature-flagged)','Residence'], note:'Urban lot in the Market Quarter. Urban tax applies to residents; the rate is TBD.'})),
   {id:'XET-C-01', t:'xetropolitan', d:'civic', at:[468,320], zoning:['Civic','Special Building'], fixed:'RESERVED', rights:['Construct: Special Building with governance permission'], excluded:['Private ownership'], note:'The public Civic plaza. Not for sale.'},
   {id:'XALP-L-01', t:'xalp', d:'resort', at:[655,300], zoning:['Resort'], leaseOnly:true, rights:['Temporary use, one night to one month'], excluded:['Ownership','Construction','Transfer'], note:'Lease only, through the Xalp resort lodges.'},
   {id:'AQX-01', t:'aquax', d:'river', at:[566,405], zoning:['Residential (unique)'], fixed:'HELD', rights:[], excluded:['Acquisition'], note:'Unique and held. Not available.'},
@@ -1660,15 +1678,16 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD='r41';
+const BUILD='r42';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
+function regionNotes(){ const out={}; if(!social.db) return out; REGIONS.forEach(r=>{ const n=citizensOnline(r.id).length+(state.passport&&state.currentRegion===r.id?1:0); if(n) out[r.id]=`${n} here now`; }); return out; }
 function citizensOnline(region){ const n=Date.now(); return social.citizens.filter(c=>c.id!==social.me && n-(c.lastSeen||0)<ONLINE_MS && (!region || c.region===region)); }
 function citizenName(c){ return (c&&c.handle) || 'An Xlander'; }
 function socialChanged(){ clearTimeout(socialChanged.t); socialChanged.t=setTimeout(()=>{
   const {route,arg}=parse(); const typing=document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
-  if(route==='world'){ XW.setUserObjects(userObjects()); const pn=$('#world-panel'); if(pn && ui.selected && !ui.place) pn.innerHTML=panelDetail(R[ui.selected]); }
+  if(route==='world'){ XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); const pn=$('#world-panel'); if(pn && ui.parcel && PBY[ui.parcel]) pn.innerHTML=panelParcel(PBY[ui.parcel]); else if(pn && ui.selected && !ui.place) pn.innerHTML=panelDetail(R[ui.selected]); }
   else if(route==='place' && arg==='complex' && !typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL.complex); }
   else if(route==='place' && arg==='parx'){ const a=$('#ppx-list'); if(a) a.innerHTML=parxListHTML(); const c=$('#ppx-citizens'); if(c) c.innerHTML=citizenCardsHTML(); }
   else if(!typing && ['region','parcel'].includes(route)) render(); },350); }
@@ -2273,6 +2292,8 @@ const XW = (function(){
       else if(u.kind==='monument'){ put('cyl',a[0],a[1],1.3,.5,1.3,0,[.7,.68,.66],N); put('cyl',a[0],a[1],.42,5.6,.42,0,[.86,.84,.8],N,.5); put('cone',a[0],a[1],.75,2.3,.75,0,[.55,.3,.95],[.62,.36,1,2],6);
         pt(a[0],a[1],7,[.7,.45,1],7,2); pt(a[0],a[1],7.2,[.85,.7,1],2.6,0); top=8.6; }
       else if(u.kind==='parcel'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.9,.06,0,[.4,.85,.95],[.4,.85,.95,2])); pt(a[0],a[1],.4,[.45,.9,1],3.5,2); top=1.1; }
+      else if(u.kind==='forsale'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.95,.06,0,[.95,.91,.8],[1,.95,.8,.6])); pt(a[0],a[1],.35,[1,.94,.78],3,2); top=1.1; }
+      else if(u.kind==='held'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.8,.06,0,[.85,.66,.32],[1,.8,.4,1])); put('cyl',a[0],a[1],.05,1.9,.05,0,[.8,.78,.72],N); put('box',a[0]+.9,a[1],.9,.45,.05,0,[.85,.62,.28],[1,.78,.4,1],1.4); top=2.2; }
       else if(u.kind==='farmstead'){ put('house',a[0],a[1],1.4,1.1,1,.3,[.48,.3,.18],[1,.78,.45,1]); put('cyl',a[0]+5,a[1]-2,.32,1.8,.32,0,[.66,.64,.6],[0,0,0,0]); pt(a[0],a[1],1.4,[1,.8,.45],2.4,0); top=2; }
       else if(u.kind==='scaffold'){ const h=u.h||1; put('box',a[0],a[1],1.6,h,1.6,0,[.36,.33,.3],[1,.75,.4,1]); for(let i=0;i<4;i++) pt(a[0]+(i%2?5:-5),a[1]+(i<2?5:-5),h+.3,[1,.75,.35],1,0); top=h+.5; }
       const [x,z]=toW(a[0],a[1]); placeAnchors['u-'+u.id]=[x,heightAt(a[0],a[1])+top+.4,z]; });
@@ -2479,7 +2500,14 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   /* ---- camera ---- */
   const cam={tx:0,ty:0,tz:2,yaw:0,pitch:.92,dist:100}, goal={...cam};
   let shiftY=0, host=null, mode='world', focus=null, selected=null, deps=false, shift=0, userMoved=false, raf=0, last=0, t0=performance.now(), cssW=1, cssH=1, VP=null, eye=[0,0,0], fov=.68;
-  let labelEls={}, arcSvg=null, onSelect=null, onPlace=null;
+  let labelEls={}, arcSvg=null, onSelect=null, onPlace=null, overlayEl=null, regionNotes={};
+  function buildUserLabels(lay){
+    for(const k in placeEls) if(k.startsWith('u-')){ placeEls[k].remove(); delete placeEls[k]; }
+    userList.forEach(u=>{ if(mode==='region' && u.region!==focus) return;
+      const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'?'plot sale':u.kind==='held'?'plot held':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.innerHTML=`<i></i>${esc(u.label)}`;
+      if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',u.label); } lay.insertBefore(el, lay.firstChild); placeEls['u-'+u.id]=el; }); }
+  function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
+    const base=r.people||(id==='aquax'?'Water areas':'Locked reserve'); sp.textContent=regionNotes[id]?`${base} · ${regionNotes[id]}`:base; } }
   function homeDist(){ const a=Math.max(.45,(cssW*(1-Math.abs(shift)*.5))/cssH); return Math.max(90,Math.min(300,54*K/(Math.tan(fov/2)*a)*(a<1?.97:1))); }
   function setHome(instant){ Object.assign(goal,{tx:0,ty:0,tz:mode==='backdrop'?0:5,pitch:mode==='backdrop'?.6:(cssW<cssH?.78:.9),dist:homeDist()*(mode==='backdrop'?1.04:1)}); if(instant) Object.assign(cam,goal); }
   function flyTo(id,instant){
@@ -2610,8 +2638,8 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
       rects.push([cx-el._w/2,cy-el._h,cx+el._w/2,cy]); }
     const cand=[];
     for(const id in placeEls){ const el=placeEls[id], a=placeAnchors[id]; const p=a&&project(a[0],a[1],a[2]);
-      if(!p || (id==='house' ? !(hoverHouse||selPlace==='house') : (!showPlaces && id!==selPlace && !id.startsWith('u-'))) || p[0]<-40 || p[0]>cssW+40 || p[1]<0 || p[1]>cssH+20){ el.classList.add('hide'); continue; }
-      cand.push([id==='house'?-3:id.startsWith('u-')?-2:id===selPlace?-1:Math.hypot(p[0]-cssW/2,p[1]-cssH/2),id,p]); }
+      if(!p || (id==='house' ? !(hoverHouse||selPlace==='house') : (!showPlaces && id!==selPlace && (!id.startsWith('u-') || id.startsWith('u-p-')))) || p[0]<-40 || p[0]>cssW+40 || p[1]<0 || p[1]>cssH+20){ el.classList.add('hide'); continue; }
+      cand.push([id==='house'?-3:id.startsWith('u-p-')&&id!==selPlace?Math.hypot(p[0]-cssW/2,p[1]-cssH/2)+40:id.startsWith('u-')?-2:id===selPlace?-1:Math.hypot(p[0]-cssW/2,p[1]-cssH/2),id,p]); }
     cand.sort((a,b)=>a[0]-b[0]);
     for(const [,id,p] of cand){ const el=placeEls[id]; if(!el._w){ el._w=el.offsetWidth||80; el._h=el.offsetHeight||22; }
       const x0=p[0]-el._w/2-3, y0=p[1]-el._h-12, x1=p[0]+el._w/2+3, y1=p[1];
@@ -2624,7 +2652,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
         const c=[2*pm[0]-(pa[0]+pb[0])/2, 2*pm[1]-(pa[1]+pb[1])/2]; paths[i].setAttribute('d',`M${pa[0].toFixed(1)},${pa[1].toFixed(1)} Q${c[0].toFixed(1)},${c[1].toFixed(1)} ${pb[0].toFixed(1)},${pb[1].toFixed(1)}`); }); }
   }
   function buildOverlay(){
-    const lay=document.createElement('div'); lay.className='scene-labels'; labelEls={};
+    const lay=document.createElement('div'); lay.className='scene-labels'; labelEls={}; overlayEl=lay;
     if(mode!=='backdrop'){
       REGIONS.forEach(r=>{ if(mode==='region' && r.id!==focus) return;
         const el=document.createElement(mode==='world'?'button':'div'); el.className='tl'+(r.status==='locked'?' locked':'')+(r.status==='mythic'?' mythic':'')+(r.id===selected?' sel':'');
@@ -2632,9 +2660,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
         el.innerHTML=`<b>${esc(r.name)}</b><span>${esc(r.people||(r.id==='aquax'?'Water areas':'Locked reserve'))}</span>`;
         el.classList.add('hide'); lay.appendChild(el); labelEls[r.id]=el; });
       placeEls={};
-      userList.forEach(u=>{ if(mode==='region' && u.region!==focus) return;
-        const el=document.createElement(mode==='world'?'button':'div'); el.className='pl mine hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.innerHTML=`<i></i>${esc(u.label)}`;
-        if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',u.label); } lay.appendChild(el); placeEls['u-'+u.id]=el; });
+      buildUserLabels(lay);
       PLACES.forEach(q=>{ if(mode==='region' && q.region!==focus) return;
         const el=document.createElement(mode==='world'?'button':'div'); el.className='pl hide'+(q.founder?' founder':'')+(q.id===selPlace?' sel':''); el.dataset.place=q.id;
         el.style.setProperty('--c',DISTRICTS[q.d].c); if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',`${q.name}, ${DISTRICTS[q.d].name}, ${R[q.region].name}`); }
@@ -2643,7 +2669,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
     host.appendChild(lay);
     const svgNS='http://www.w3.org/2000/svg'; arcSvg=document.createElementNS(svgNS,'svg'); arcSvg.setAttribute('class','scene-arcs'); arcSvg.setAttribute('aria-hidden','true');
     arcSvg.innerHTML=`<defs><marker id="sarr" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#67D8E9"/></marker></defs>`+DEPS.map(dp=>`<path class="arc ${dp.future?'future':''}" ${dp.future?'':'marker-end="url(#sarr)"'}/>`).join('');
-    arcSvg.style.display=deps?'':'none'; host.insertBefore(arcSvg,lay); setWorld({storm, routes:routeState});
+    arcSvg.style.display=deps?'':'none'; host.insertBefore(arcSvg,lay); setWorld({storm, routes:routeState}); setRegionNotes(regionNotes);
   }
   function attach(h,opts){
     if(!init()) return false;
@@ -2664,9 +2690,9 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   let bottomInset=0; function setInset(v){ bottomInset=Math.max(0,v||0); }
   let burnLevel=0; function setBurn(v){ burnLevel=Math.max(0,Math.min(1,v)); }
   let storm=false, routeState=[]; function setWorld(o){ storm=!!o.storm; routeState=o.routes||[]; if(arcSvg) arcSvg.querySelectorAll('path.arc').forEach((pth,i)=>pth.classList.toggle('disrupted', routeState.includes(DEPS[i].from+'>'+DEPS[i].to))); }
-  function setUserObjects(list){ userList=list||[]; userDirty=true; }
+  function setUserObjects(list){ userList=list||[]; userDirty=true; if(overlayEl && host && host.isConnected) buildUserLabels(overlayEl); }
   function setPlace(id){ selPlace=id; for(const k in placeEls) placeEls[k].classList.toggle('sel',k===id); }
-  return { regionAt:(px,py)=>built?regionAt(px,py):null, supported:()=>init(), attach, flyTo:(id)=>flyTo(id,false), flyToPlace, setPlace, setSelected, setUserObjects, setBurn, setWorld, setInset, setDeps:(d)=>{ deps=d; if(arcSvg) arcSvg.style.display=d?'':'none'; }, setShift:(s)=>{shift=s;} };
+  return { regionAt:(px,py)=>built?regionAt(px,py):null, supported:()=>init(), attach, flyTo:(id)=>flyTo(id,false), flyToPlace, flyToPoint:(px,py)=>{ if(built) flyToPoint(px,py); }, setRegionNotes, setPlace, setSelected, setUserObjects, setBurn, setWorld, setInset, setDeps:(d)=>{ deps=d; if(arcSvg) arcSvg.style.display=d?'':'none'; }, setShift:(s)=>{shift=s;} };
 })();
 
 /* ---------------- Chrome ---------------- */
@@ -2796,6 +2822,31 @@ function panelPlace(q){
   <p class="meta" style="margin-top:1rem">${phaseNote(q)}<span class="tag tag-prov">Provisional placement</span></p>
   <div class="btn-row" style="margin-top:1.5rem"><a class="btn btn-primary" href="#/place/${q.id}">Enter ${esc(q.name)}</a><a class="link" href="#/region/${r.id}">${esc(r.name)}</a></div>`;
 }
+function parcelStanding(pp){ const av=parcelAvail(pp), mine=rightFor(state,pp.id), cl=social.claims[pp.id];
+  if(mine) return {cls:'mine', text:'Yours'};
+  if(cl&&cl.owner&&cl.owner!==social.me) return {cls:'held', text:`Held by ${cl.handle||'another citizen'}`};
+  if(av==='AVAILABLE') return {cls:'sale', text:`For sale · ${pp.price} BuX`};
+  return {cls:'closed', text:av.charAt(0)+av.slice(1).toLowerCase()}; }
+function parcelActions(pp){ const st=parcelStanding(pp), here=state.currentRegion===pp.t, r=R[pp.t];
+  if(st.cls==='mine') return `<a class="btn btn-primary" href="#/parcel/${pp.id}">Manage your land</a>`;
+  if(st.cls!=='sale') return `<a class="link" href="#/parcel/${pp.id}">Open the registry entry</a>`;
+  if(!state.passport) return `<a class="btn btn-primary" href="#/hotex">Get a passport to buy land</a>`;
+  if(!here) return `<button class="btn btn-primary" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button><span class="meta">Land is bought on site.</span>`;
+  return `<a class="btn btn-gold" href="#/parcel/${pp.id}">Review the deed and buy</a>`; }
+function panelParcel(pp){ const r=R[pp.t], st=parcelStanding(pp);
+  return `<button class="back link" data-act="select" data-id="${r.id}" style="margin-bottom:1rem">${ICON.back} ${esc(r.name)}</button>
+  <div class="panel-head tinted" style="--h:${r.geo.hue}">${emblem(r.id,64)}<div><h2 class="display" style="font-size:1.9rem">Parcel ${esc(pp.id)}</h2><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
+  <dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${esc(pp.zoning.join(', '))}</dd>${pp.price?`<dt>Price</dt><dd>${pp.price} BuX <span class="tag tag-sim">Simulation</span></dd>`:''}<dt>Rights</dt><dd>${esc(pp.rights.join(', ')||'None')}</dd>${pp.excluded.length?`<dt>Not included</dt><dd>${esc(pp.excluded.join(', '))}</dd>`:''}</dl>
+  ${pp.note?`<p class="meta" style="margin-top:.9rem">${esc(pp.note)}</p>`:''}
+  <div class="btn-row" style="margin-top:1.4rem">${parcelActions(pp)}</div>`; }
+function scardParcel(pp){ const st=parcelStanding(pp);
+  return `<div class="sc-head sc-parcel">${emblem(pp.t,48)}<div><b class="sc-name">Parcel ${esc(pp.id)}</b><span>${esc(pp.zoning.join(', '))}, ${esc(R[pp.t].name)}</span><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
+  <div class="btn-row">${parcelActions(pp)}<button class="sc-link" data-act="select" data-id="${pp.t}">Back</button></div>`; }
+function selectParcel(id){ const pp=PBY[id]; if(!pp) return; ui.parcel=id; ui.place=null; ui.selected=pp.t; inspect(pp.t);
+  const stage=$('#map-stage'), panel=$('#world-panel'), card=$('#scard');
+  if(stage && !stage.classList.contains('flat')){ XW.setSelected(pp.t); XW.setPlace('u-p-'+id); XW.flyToPoint(pp.at[0],pp.at[1]); }
+  if(panel) panel.innerHTML=panelParcel(pp);
+  if(card){ card.innerHTML=scardParcel(pp); card.hidden=false; card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); requestAnimationFrame(()=>XW.setInset(window.matchMedia('(max-width:820px)').matches?card.offsetHeight+16:0)); } }
 function scardPlace(q){
   const d=DISTRICTS[q.d];
   return `<div class="sc-head"><div><b class="sc-name">${esc(q.name)}</b><span class="dist-tag" style="--c:${d.c};color:#A9B6CE"><i></i>${esc(d.name)}</span></div></div>
@@ -2836,12 +2887,12 @@ function viewWorld(){
     <div class="stage-wrap">
       <div class="map-stage ${ui.flat?'flat':'scene'}" id="map-stage" ${ui.flat?'':'data-scene="world"'}>${ui.flat?renderMap({mode:'full', selected:ui.selected, deps:ui.deps}):''}</div>
       <div class="rail" id="rail" aria-label="Territories"><button data-act="deselect" ${ui.selected?'':'aria-current="true"'}>Whole world</button>${REGIONS.map(x=>`<button data-act="select" data-id="${x.id}" ${ui.selected===x.id?'aria-current="true"':''}>${emblem(x.id,22)}${esc(x.name)}</button>`).join('')}</div>${frameCorners()}${compassRose('world-compass')}
-      <div class="scard" id="scard" ${r?'':'hidden'}>${ui.place?scardPlace(PL[ui.place]):r?scard(r):''}</div>
+      <div class="scard" id="scard" ${r?'':'hidden'}>${ui.parcel&&PBY[ui.parcel]?scardParcel(PBY[ui.parcel]):ui.place?scardPlace(PL[ui.place]):r?scard(r):''}</div>
     </div>
     <div class="map-tools glass"><button class="toggle" data-act="deps" aria-pressed="${ui.deps}"><span class="track" aria-hidden="true"></span>Connections</button><button class="toggle" data-act="flat" aria-pressed="${ui.flat}"><span class="track" aria-hidden="true"></span>Flat map</button><button class="link link-muted" data-act="deselect">Whole world</button></div>
     <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build .</p>
     <div class="world-events">${eventBanner()}</div>
-    <aside class="world-panel glass" id="world-panel" aria-live="polite">${ui.place?panelPlace(PL[ui.place]):r?panelDetail(r):panelList()}</aside>
+    <aside class="world-panel glass" id="world-panel" aria-live="polite">${ui.parcel&&PBY[ui.parcel]?panelParcel(PBY[ui.parcel]):ui.place?panelPlace(PL[ui.place]):r?panelDetail(r):panelList()}</aside>
   </section>`;
 }
 
@@ -3196,7 +3247,7 @@ function mountScene(){
   const h=document.querySelector('#app [data-scene]'); if(!h) return;
   const m=h.dataset.scene, small=window.matchMedia('(max-width:820px)').matches;
   const fallback = el => { el.classList.add('flat'); el.innerHTML = renderMap(m==='world'?{mode:'full',selected:ui.selected,deps:ui.deps}:m==='region'?{mode:'mini',highlight:h.dataset.focus}:{mode:'backdrop'}); };
-  XW.setUserObjects(userObjects()); XW.setWorld({storm:activeEvents().some(e=>e.id==='storm'), routes:activeEvents().map(e=>WEVENTS[e.id].route).filter(Boolean)}); XW.setBurn(Math.log10(1+Number(burnedBuX()))/3);
+  XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); XW.setWorld({storm:activeEvents().some(e=>e.id==='storm'), routes:activeEvents().map(e=>WEVENTS[e.id].route).filter(Boolean)}); XW.setBurn(Math.log10(1+Number(burnedBuX()))/3);
   const ok = XW.attach(h,{mode:m, focus:h.dataset.focus, selected:m==='world'?ui.selected:null, place:m==='world'?ui.place:(h.dataset.place||null), point:h.dataset.point?h.dataset.point.split(',').map(Number):null, deps:ui.deps,
     shift: m==='world'&&!small ? 412/Math.max(900,window.innerWidth) : (m==='backdrop'&&!small ? -.46 : 0),
     onSelect: id=>{ if(id) select(id); }, onPlace: pid=>selectPlace(pid), fallback});
@@ -3212,6 +3263,9 @@ function userObjects(){
   if(social.db){ social.citizens.filter(c=>c.id!==social.me).forEach(c=>(c.structures||[]).forEach((st,i)=>{ if(!st||!st.at||!['homax','farmstead'].includes(st.kind)) return;
     list.push({id:'o-'+c.id.slice(-6)+'-'+i, kind:st.kind, label:`${citizenName(c)}'s ${st.kind==='homax'?'Homax':'Farmstead'}`, region:st.t||'', at:st.at, place:'', parcel:st.kind==='homax'?st.parcel:''}); })); }
   if(state.parcelFocus && !rightFor(state,state.parcelFocus) && location.hash.startsWith('#/parcel/')){ const pp=PBY[state.parcelFocus]; list.push({parcel:pp.id, id:'focus', kind:'parcel', label:`Parcel ${pp.id}`, region:pp.t, at:pp.at, place:''}); }
+  PARCELS.forEach(pp=>{ if(rightFor(state,pp.id) || state.parcelFocus===pp.id) return; const av=parcelAvail(pp), cl=social.claims[pp.id];
+    if(av==='AVAILABLE') list.push({id:'p-'+pp.id, kind:'forsale', parcel:pp.id, label:`For sale · ${pp.price} BuX`, region:pp.t, at:pp.at, place:''});
+    else if(av==='HELD' && cl && cl.owner && cl.owner!==social.me && !list.some(u=>u.parcel===pp.id)) list.push({id:'p-'+pp.id, kind:'held', parcel:pp.id, label:cl.handle?`${cl.handle}'s land`:'Held land', region:pp.t, at:pp.at, place:''}); });
   if(state.builds.length) list.push({id:'monument', kind:'monument', label:state.builds[0].name, region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'});
   else if(state.construct){ const c=state.construct, f=Math.min(1,(Date.now()-c.start)/(c.end-c.start)); list.push({id:'scaffold', kind:'scaffold', h:.6+f*3.4, label:'Under construction', region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'}); }
   return list;
@@ -3591,7 +3645,7 @@ function lawBlock(key){
 
 /* ---------------- Actions ---------------- */
 function selectPlace(pid){
-  const q=PL[pid]; if(!q) return; ui.selected=q.region; ui.place=pid; inspect(q.region);
+  const q=PL[pid]; if(!q) return; ui.selected=q.region; ui.place=pid; ui.parcel=null; inspect(q.region);
   if(!state.discovered.includes(pid)){ state.discovered.push(pid); save(); }
   const stage=$('#map-stage'), panel=$('#world-panel');
   if(stage && stage.classList.contains('flat')) stage.innerHTML=renderMap({mode:'full', selected:ui.selected, deps:ui.deps});
@@ -3604,7 +3658,7 @@ window.addEventListener('error', e=>{ try{ toast('Something went wrong: '+(e.mes
 window.addEventListener('unhandledrejection', e=>{ try{ toast('Something went wrong: '+((e.reason&&e.reason.message)||'unknown error')); }catch(_){} });
 function select(id){ try{ selectInner(id); }catch(err){ toast('Could not open '+(R[id]?R[id].name:'this territory')+': '+err.message); console.error(err); } }
 function selectInner(id){
-  ui.selected=id; ui.place=null; if(id) inspect(id); try{ XW.setPlace(null); }catch(e){}
+  ui.selected=id; ui.place=null; ui.parcel=null; if(id) inspect(id); try{ XW.setPlace(null); }catch(e){}
   const stage=$('#map-stage'), panel=$('#world-panel');
   const hadFocus = stage && stage.contains(document.activeElement);
   if(stage && stage.classList.contains('flat')){ stage.innerHTML=renderMap({mode:'full', selected:ui.selected, deps:ui.deps});
@@ -3640,6 +3694,7 @@ document.addEventListener('touchend', e=>{ if(!tapStart) return; const t=tapStar
 let lastTouchSelect=0;
 document.addEventListener('click', e=>{
   if(Date.now()-lastTouchSelect<600 && e.target.closest&&e.target.closest('button.tl[data-region], #rail button[data-id], .rlist button[data-id]')) return;
+  const plotEl = e.target.closest('button.pl.plot'); if(plotEl && plotEl.dataset.parcel){ selectParcel(plotEl.dataset.parcel); return; }
   const mineEl = e.target.closest('button.pl.mine'); if(mineEl){ if(mineEl.dataset.parcel) location.hash='#/parcel/'+mineEl.dataset.parcel; else if(mineEl.dataset.place) selectPlace(mineEl.dataset.place); return; }
   const placeEl = e.target.closest('button.pl[data-place]'); if(placeEl && placeEl.dataset.place){ selectPlace(placeEl.dataset.place); return; }
   const regionEl = e.target.closest('.map-full [data-region], button.tl[data-region]');

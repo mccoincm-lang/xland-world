@@ -7,7 +7,7 @@ const out = process.argv[3] || "";
 const base = `http://localhost:${port}/`;
 const PLACES = "xky forgex vaults banx payx worx complex audix confrex muxum artex librariux exes cinex conxert plaxa shoppex storex xarage xtadium parx disxees xcool hoxpital hotex synx hotexx homax satax farmxswap fields civicsite quarx xlab bazaar resort greenx tundraxhomes oracles commons house".split(" ");
 const REGIONS = "xetropolitan farmx xalp ximberland aquax xetland xasteland tundrax ixeland xahara".split(" ");
-const PARCELS = ["XIM-R-01", "XIM-R-02", "FX-A-01", "FX-A-02", "XET-C-01", "XET-U-01"];
+const PARCELS = ["XIM-R-01", "XIM-R-10", "FX-A-01", "FX-A-08", "XET-C-01", "XET-U-01", "XET-U-06"];
 const ROUTES = ["", "hotex", "world", "wallet", "quests", "chronicle", "profile", "economy", "tests", "founder"]
   .map((r) => "#/" + r)
   .concat(REGIONS.map((r) => "#/region/" + r), PLACES.map((p) => "#/place/" + p), PARCELS.map((p) => "#/parcel/" + p));

@@ -8,7 +8,16 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const port = Number(process.argv[2] || 8787);
 
+// Re-import the worker only when its files change (each import is a new module that is never freed).
+import { statSync } from "node:fs";
+let cached = null, cachedKey = "";
 function loadWorker() {
+  const key = ["dist/index.html", "src/worker.js"].map((f) => statSync(root + f).mtimeMs).join("|");
+  if (cached && key === cachedKey) return cached;
+  cachedKey = key;
+  return (cached = loadWorkerFresh());
+}
+function loadWorkerFresh() {
   const html = readFileSync(root + "dist/index.html", "utf8");
   const src = readFileSync(root + "src/worker.js", "utf8").replace(
     'import HTML from "../dist/index.html";',

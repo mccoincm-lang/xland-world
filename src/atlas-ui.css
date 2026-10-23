@@ -208,3 +208,21 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .toast.glass{align-items:center}
 #app.no-anim .fade-in,#app.no-anim .world-panel,#app.no-anim .scard.pop{animation:none}
 @media (min-width:821px){ main:has(> .world),main:has(> .hero){padding-bottom:0} }
+
+/* Land plots on the map and in the codex */
+.pl.plot{font-size:13.5px;padding:.18rem .5rem .2rem .42rem}
+.pl.plot i{width:7px;height:7px;transform:none;border-radius:1px}
+.pl.plot.sale{color:#F3EAD3;border-color:rgba(243,234,211,.35)}
+.pl.plot.sale i{background:#F3EAD3;box-shadow:none}
+.pl.plot.held{color:#F1D9A0;border-color:rgba(216,186,124,.5);background:rgba(28,20,8,.78)}
+.pl.plot.held i{background:#D8BA7C;box-shadow:0 0 6px #D8BA7C}
+.plot-tag{display:inline-block;margin-top:.35rem;padding:.12rem .55rem;font-size:15px;font-weight:600;border:1px solid var(--line-strong);border-radius:3px;white-space:nowrap}
+.plot-tag.sale{color:var(--text);border-color:var(--gold);background:var(--gold-soft)}
+.plot-tag.held{color:var(--gold)}
+.plot-tag.mine{color:var(--cyan);border-color:var(--cyan)}
+.scard .plot-tag{color:#F1D9A0;border-color:rgba(216,186,124,.5);background:none}
+.world-panel,.scard{z-index:6}
+.sc-parcel .sc-name{font-size:1.3rem;white-space:nowrap}
+.sc-parcel span{display:block}
+.sc-parcel .plot-tag{display:inline-block;margin-top:.4rem}
+.pl.plot.sel{color:#fff;border-color:var(--gold);box-shadow:0 0 14px rgba(216,186,124,.5);z-index:2}
