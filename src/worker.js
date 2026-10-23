@@ -25,7 +25,7 @@ const FOUNDER_READ = ['progress','feedback'];
 const SELF_WRITE = ['citizens','posts','gov','ballots','progress','feedback','state'];
 const ALL = PUBLIC.concat(FOUNDER_READ, ['state']);
 const MAX_DOC = 64 * 1024, MAX_STATE = 1024 * 1024;
-const NEW_PER_NETWORK_PER_DAY = 8;
+const NEW_PER_NETWORK_PER_DAY = 60;   // testers often share one network (office Wi-Fi, mobile carrier NAT)
 const ID_RE = /^[A-Za-z0-9_\-]{1,64}$/;
 
 const SCHEMA = [

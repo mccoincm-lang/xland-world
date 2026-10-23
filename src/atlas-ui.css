@@ -190,3 +190,21 @@ h1.display{background:none;color:var(--ivory-hi);-webkit-text-fill-color:current
 /* Hero: keep the inscription clear of the island */
 .hero-veil{background:linear-gradient(90deg,var(--bg) 0%,color-mix(in srgb,var(--bg) 94%,transparent) 34%,color-mix(in srgb,var(--bg) 55%,transparent) 54%,transparent 72%),linear-gradient(0deg,var(--bg) 0%,transparent 26%)}
 @media (max-width:820px){ .hero-veil{background:linear-gradient(0deg,var(--bg) 34%,color-mix(in srgb,var(--bg) 70%,transparent) 62%,transparent 84%)} }
+@media (max-width:820px){ .world-panel{width:auto} }
+code{font-size:14px}
+
+/* Guide space: content and sticky actions sit above the floating first-steps guide */
+main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
+.action-bar{bottom:calc(1rem + var(--guide-h,0px) + env(safe-area-inset-bottom,0px))}
+@media (max-width:820px){
+  main{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px) + var(--guide-h,0px))}
+  .action-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px) + var(--guide-h,0px))}
+  .guide{padding:.75rem .9rem;gap:.45rem}
+  .guide p{font-size:16px;line-height:1.4}
+  .guide .btn{min-height:40px !important;padding:.45rem 1rem !important;font-size:15px}
+}
+@media (min-width:821px){ .world-panel{bottom:calc(1rem)} }
+@media (max-width:820px){ .toast{bottom:auto !important;height:auto} }
+.toast.glass{align-items:center}
+#app.no-anim .fade-in,#app.no-anim .world-panel,#app.no-anim .scard.pop{animation:none}
+@media (min-width:821px){ main:has(> .world),main:has(> .hero){padding-bottom:0} }

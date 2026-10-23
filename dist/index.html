@@ -879,6 +879,24 @@ h1.display{background:none;color:var(--ivory-hi);-webkit-text-fill-color:current
 /* Hero: keep the inscription clear of the island */
 .hero-veil{background:linear-gradient(90deg,var(--bg) 0%,color-mix(in srgb,var(--bg) 94%,transparent) 34%,color-mix(in srgb,var(--bg) 55%,transparent) 54%,transparent 72%),linear-gradient(0deg,var(--bg) 0%,transparent 26%)}
 @media (max-width:820px){ .hero-veil{background:linear-gradient(0deg,var(--bg) 34%,color-mix(in srgb,var(--bg) 70%,transparent) 62%,transparent 84%)} }
+@media (max-width:820px){ .world-panel{width:auto} }
+code{font-size:14px}
+
+/* Guide space: content and sticky actions sit above the floating first-steps guide */
+main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
+.action-bar{bottom:calc(1rem + var(--guide-h,0px) + env(safe-area-inset-bottom,0px))}
+@media (max-width:820px){
+  main{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px) + var(--guide-h,0px))}
+  .action-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px) + var(--guide-h,0px))}
+  .guide{padding:.75rem .9rem;gap:.45rem}
+  .guide p{font-size:16px;line-height:1.4}
+  .guide .btn{min-height:40px !important;padding:.45rem 1rem !important;font-size:15px}
+}
+@media (min-width:821px){ .world-panel{bottom:calc(1rem)} }
+@media (max-width:820px){ .toast{bottom:auto !important;height:auto} }
+.toast.glass{align-items:center}
+#app.no-anim .fade-in,#app.no-anim .world-panel,#app.no-anim .scard.pop{animation:none}
+@media (min-width:821px){ main:has(> .world),main:has(> .hero){padding-bottom:0} }
 
 </style>
 </head>
@@ -1642,7 +1660,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD='r39';
+const BUILD='r41';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -2821,7 +2839,7 @@ function viewWorld(){
       <div class="scard" id="scard" ${r?'':'hidden'}>${ui.place?scardPlace(PL[ui.place]):r?scard(r):''}</div>
     </div>
     <div class="map-tools glass"><button class="toggle" data-act="deps" aria-pressed="${ui.deps}"><span class="track" aria-hidden="true"></span>Connections</button><button class="toggle" data-act="flat" aria-pressed="${ui.flat}"><span class="track" aria-hidden="true"></span>Flat map</button><button class="link link-muted" data-act="deselect">Whole world</button></div>
-    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build r39.</p>
+    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build .</p>
     <div class="world-events">${eventBanner()}</div>
     <aside class="world-panel glass" id="world-panel" aria-live="polite">${ui.place?panelPlace(PL[ui.place]):r?panelDetail(r):panelList()}</aside>
   </section>`;
@@ -3088,10 +3106,14 @@ const GUIDE = [
   {id:'tap', text:'Tap any territory on the map. Every land has its own law and its own price.', done:s=>s.inspected.length>=2, go:'#/world', cta:'Open the map'},
   {id:'farm', text:'Travel to FarmX and start a harvest at the fields.', done:s=>!!s.plot||s.ledger.some(e=>e.op.startsWith('prod-')), go:'#/place/fields', cta:'Go to the fields'},
   {id:'trade', text:'When the harvest is ready, sell it at FarmXSwap, the native market.', done:s=>s.ledger.some(e=>e.op.startsWith('swap-')), go:'#/place/farmxswap', cta:'Go to FarmXSwap'},
-  {id:'journal', text:'Open your Journal and accept a mission. Missions come from places, not from a menu.', done:s=>Object.entries(s.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='active')||Object.values(s.mstate||{}).filter(v=>v==='rewarded').length>1, go:'#/quests', cta:'Open the Journal'},
+  {id:'journal', text:'Open your Journal and accept a mission. Missions come from places, not from a menu.', done:s=>Object.entries(s.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='active')||Object.values(s.mstate||{}).filter(v=>v==='rewarded').length>1||(s.dyn||[]).some(d=>d.acceptedAt), go:'#/quests', cta:'Open the Journal'},
   {id:'passport', text:'Look at your Passport: what you can do, what you cannot, and why.', done:s=>!!s.seenPassport, go:'#/profile', cta:'Open the Passport'}
 ];
-function renderGuide(route){ const g=$('#guide'); if(!g) return; const s=state;
+/* The guide floats above the content; reserve its height so it never hides buttons or the end of a page. */
+function syncGuideSpace(){ const g=$('#guide'); const h=g&&g.firstElementChild?g.offsetHeight+12:0; document.documentElement.style.setProperty('--guide-h', h+'px'); }
+window.addEventListener('resize', ()=>syncGuideSpace());
+function renderGuide(route){ renderGuideInner(route); syncGuideSpace(); }
+function renderGuideInner(route){ const g=$('#guide'); if(!g) return; const s=state;
   if(!s.passport || ['hotex','founder'].includes(route) || (s.guide&&s.guide.hidden)){ g.innerHTML=''; return; }
   const idx=GUIDE.findIndex(x=>!x.done(s));
   if(idx<0){ if(!(s.guide&&s.guide.finished)){ s.guide=Object.assign({},s.guide,{finished:true}); chron('FirstSteps','First steps in Xland complete','You read the land, worked it, traded, took a mission and read your passport.',null,'ordinary'); save(); toast('First steps complete. Xland is yours to explore.'); } g.innerHTML=''; return; }
@@ -3134,7 +3156,7 @@ function viewFounder(){
   </section>`; }
 /* ---------------- Router ---------------- */
 function parse(){ const h=(location.hash||'#/').slice(2).split('/'); return {route:h[0]||'home', arg:h[1]}; }
-let lastRoute='';
+let lastRoute='', lastHTML='';
 function render(){
   const {route,arg}=parse();
   if(resolveEvents()) save(); if(advanceProposals()) save(); if(syncSharedLaws()) save(); if(applySpoilage()) save(); if(applyIdleFees()) save(); recordBranches(); generateMissions();
@@ -3157,10 +3179,14 @@ function render(){
     case 'parcel': html=viewParcel(arg); break;
     default: html=viewLanding();
   }
-  $('#app').innerHTML=html;
+  const key=route+'/'+(arg||''), app=$('#app');
+  // Shared-world updates re-render often: leave the page alone when nothing changed (keeps clicks, inputs and the
+  // 3D scene intact), and do not replay the entrance animation when the same page is redrawn.
+  if(key===lastRoute && html===lastHTML && app.childElementCount){ renderGuide(route); return; }
+  app.classList.toggle('no-anim', key===lastRoute);
+  app.innerHTML=html; lastHTML=html;
   mountScene();
   renderGuide(route);
-  const key=route+'/'+(arg||'');
   if(key!==lastRoute){ window.scrollTo(0,0); lastRoute=key; }
   if(route==='hotex' && hx.step===2){ const i=$('#hx-handle'); if(i) i.focus(); }
 }
