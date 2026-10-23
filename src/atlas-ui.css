@@ -235,3 +235,29 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .econ-world-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 .econ-world-grid .world-econ{margin-top:0}
 @media (max-width:820px){ .econ-world-grid{grid-template-columns:1fr} }
+
+/* ===== r44 Plaxa market: shops between citizens ===== */
+.shop-head{display:flex;align-items:center;gap:.9rem}
+.shop-mark{width:44px;height:44px;flex:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.mkt-form{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) auto;gap:.7rem;align-items:end;margin:1rem 0 .4rem}
+.mkt-form .swap-row{margin:0;max-width:none}
+.mkt-form .btn{height:fit-content}
+@media (max-width:640px){ .mkt-form{grid-template-columns:1fr 1fr} .mkt-form .swap-row:first-child,.mkt-form .btn{grid-column:1/-1} }
+.ord{display:inline-block;font-variant:small-caps;letter-spacing:.03em;padding:0 .45rem;border-radius:3px;border:1px solid var(--line);white-space:nowrap}
+.ord-ok{color:var(--cyan);border-color:color-mix(in srgb,var(--cyan) 45%,transparent)}
+.ord-no{color:var(--muted)}
+.ord-pending{color:var(--gold);border-color:var(--brass-hairline)}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr));gap:1rem;margin-top:1rem}
+.shop-card{padding:1rem 1.1rem}
+.shop-card-h{display:flex;flex-direction:column;gap:.1rem;padding-bottom:.6rem;margin-bottom:.4rem;border-bottom:1px solid var(--brass-hairline)}
+.shop-card-h b{font-family:var(--font-display);font-weight:400;font-size:1.25rem;color:var(--ivory-hi,var(--text))}
+.shelf{list-style:none;margin:0;padding:0}
+.shelf li{display:flex;align-items:center;justify-content:space-between;gap:.8rem;padding:.55rem 0;border-bottom:1px dashed var(--line)}
+.shelf li:last-child{border-bottom:0}
+.shelf-g{display:flex;flex-direction:column;min-width:0}
+.shelf-buy{display:flex;gap:.45rem;align-items:center;flex:none}
+.shelf-buy .input{width:4.6rem;padding-left:.5rem;padding-right:.3rem}
+.pp-licence{display:flex;align-items:center;gap:.55rem;margin:.6rem 0 1.6rem;font-size:var(--small)}
+.pp-licence svg{width:30px;height:30px;flex:none;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.45))}
+.pp-licence b{font-variant:small-caps;letter-spacing:.04em;color:var(--gold)}
+@media (max-width:640px){ .tbl .upd{display:none} .ord{white-space:normal} }

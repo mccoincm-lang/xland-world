@@ -19,10 +19,12 @@ const INTERESTS = ['explore','build','farm','govern','shop','partner'];
    - public, self-write: citizens, posts, gov, ballots  (a citizen writes only the document named by their own uid)
    - claims: anyone may claim a free parcel; only the holder may rewrite it (atomic, no double-claims)
    - private: state (own only), progress and feedback (own write; only the founder reads them all)
-   - posts: the founder may also rewrite any posts document (moderation) */
-const PUBLIC = ['citizens','posts','gov','ballots','claims'];
+   - posts: the founder may also rewrite any posts document (moderation)
+   - shops: public, self-write (a citizen's shopfront and the goods they list). Orders are not documents: the server
+     keeps the order book itself (xl_orders) so a listing can never be oversold and an order settles only once. */
+const PUBLIC = ['citizens','posts','gov','ballots','claims','shops'];
 const FOUNDER_READ = ['progress','feedback'];
-const SELF_WRITE = ['citizens','posts','gov','ballots','progress','feedback','state'];
+const SELF_WRITE = ['citizens','posts','gov','ballots','progress','feedback','state','shops'];
 const ALL = PUBLIC.concat(FOUNDER_READ, ['state']);
 const MAX_DOC = 64 * 1024, MAX_STATE = 1024 * 1024;
 const NEW_PER_NETWORK_PER_DAY = 60;   // testers often share one network (office Wi-Fi, mobile carrier NAT)
@@ -40,7 +42,13 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS xl_seams (uid TEXT PRIMARY KEY, started INTEGER NOT NULL, ends INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS xl_minelog (uid TEXT NOT NULL, at INTEGER NOT NULL, amount INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS xl_minelog_at ON xl_minelog (at)",
-  "CREATE TABLE IF NOT EXISTS xl_mints (uid TEXT PRIMARY KEY, amount INTEGER NOT NULL, at INTEGER NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS xl_mints (uid TEXT PRIMARY KEY, amount INTEGER NOT NULL, at INTEGER NOT NULL)",
+  // Citizen shops in Plaxa: shopfronts built (QuarX consumed), and the order book between citizens
+  "CREATE TABLE IF NOT EXISTS xl_shopfronts (uid TEXT PRIMARY KEY, name TEXT NOT NULL, quarx INTEGER NOT NULL, at INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS xl_orders (oid TEXT PRIMARY KEY, buyer TEXT NOT NULL, seller TEXT NOT NULL, ref TEXT NOT NULL, asset TEXT NOT NULL, qty INTEGER NOT NULL, price INTEGER NOT NULL, total INTEGER NOT NULL, fee INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS xl_orders_buyer ON xl_orders (buyer, updated)",
+  "CREATE INDEX IF NOT EXISTS xl_orders_seller ON xl_orders (seller, updated)",
+  "CREATE INDEX IF NOT EXISTS xl_orders_ref ON xl_orders (seller, ref, status)"
 ];
 
 /* ---------------- World economy (server-authoritative) ----------------
@@ -52,6 +60,9 @@ const SCHEMA = [
    The page mirrors these rules (ECONOMY in index.html) for display and for its rule tests. */
 const UNIT = 10000;
 const ECON = { quarxCap: 1e9, genesis: 2.5e8, seamReward: 1, seamSecsMin: 60, seamSecsMax: 120, dailySeams: 5, targetMiners: 8, sandboxBuX: 1000 };
+/* Plaxa market (provisional, alpha): a shopfront consumes QuarX for good; 1% of each sale goes to the Xetropolitan
+   treasury; a buyer may cancel an order the merchant has not filled after 24 hours. */
+const MARKET = { shopfrontQuarx: 3, feeBps: 100, maxQty: 1000, maxOpenPerBuyer: 20, cancelAfterMs: 24 * 3600 * 1000, assets: ['vegiex', 'livestox', 'quarx'] };
 const MINABLE = (ECON.quarxCap - ECON.genesis) * UNIT;
 function quarxEpoch(mined){ if(mined >= MINABLE) return Infinity; return Math.floor(-Math.log2(1 - mined / MINABLE)); }
 function seamReward(mined){ const e = quarxEpoch(mined); if(!isFinite(e)) return 0; return Math.max(1, Math.floor(ECON.seamReward * UNIT / 2 ** e)); }
@@ -67,9 +78,12 @@ async function worldReport(env, now){
     unit: UNIT,
     quarx: { cap: ECON.quarxCap * UNIT, genesis: ECON.genesis * UNIT, minable: MINABLE, mined, epoch: quarxEpoch(mined) + 1, reward: seamReward(mined),
       nextHalvingAt: nextHalvingAt(mined), miners24h: miners, difficulty: difficulty(miners), dailySeams: ECON.dailySeams },
-    bux: { minted: await worldCounter(env, 'bux_minted'), reserve: await worldCounter(env, 'bux_reserve') }
+    bux: { minted: await worldCounter(env, 'bux_minted'), reserve: await worldCounter(env, 'bux_reserve') },
+    market: { shopfronts: await worldCounter(env, 'shopfronts'), quarxConsumed: await worldCounter(env, 'quarx_consumed'), sales: await worldCounter(env, 'market_sales'),
+      volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), feeBps: MARKET.feeBps, shopfrontQuarx: MARKET.shopfrontQuarx }
   };
 }
+const orderOut = o => ({ oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
 let schemaReady = false;
 async function ensureSchema(env){ if(schemaReady) return; for(const s of SCHEMA) await env.DB.prepare(s).run(); schemaReady = true; }
 
@@ -150,6 +164,65 @@ async function api(req, env, url){
     const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_mints (uid, amount, at) VALUES (?1, ?2, ?3)').bind(me.uid, amount, now).run();
     if(r.meta.changes){ await addWorld(env, 'bux_minted', amount); await addWorld(env, 'bux_reserve', amount); }
     return json({ok:true, minted: !!r.meta.changes, amount});
+  }
+
+  if(p === '/api/shop/open' && req.method === 'POST'){
+    // Recorded once per citizen: the shopfront's QuarX leaves circulation for good.
+    const name = String(q.get('name') || '').trim().slice(0, 32);
+    if(name.length < 2) return fail(400, 'Give your shop a name.');
+    const amount = MARKET.shopfrontQuarx * UNIT;
+    const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at) VALUES (?1, ?2, ?3, ?4)').bind(me.uid, name, amount, now).run();
+    if(r.meta.changes){ await addWorld(env, 'shopfronts', 1); await addWorld(env, 'quarx_consumed', amount); }
+    return json({ok:true, built: !!r.meta.changes, quarx: amount});
+  }
+
+  if(p === '/api/market/orders' && req.method === 'GET'){
+    const rows = async (who) => (await env.DB.prepare(`SELECT * FROM xl_orders WHERE ${who} = ?1 ORDER BY updated DESC LIMIT 100`).bind(me.uid).all()).results.map(orderOut);
+    return json({ok:true, now, buying: await rows('buyer'), selling: await rows('seller')});
+  }
+
+  if(p === '/api/market/order' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    const oid = q.get('oid') || '', seller = q.get('seller') || '', ref = q.get('ref') || '', qty = Number(q.get('qty')), price = Number(q.get('price'));
+    if(!ID_RE.test(oid) || !ID_RE.test(seller) || !ID_RE.test(ref)) return fail(400, 'Invalid order.');
+    if(seller === me.uid) return fail(403, 'You cannot buy from your own shop.');
+    if(!Number.isInteger(qty) || qty < 1 || qty > MARKET.maxQty) return fail(400, 'Choose a whole quantity.');
+    const doc = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'shops' AND id = ?1").bind(seller).first();
+    const shop = doc ? JSON.parse(doc.data) : null;
+    if(!shop || !(Number(shop.openUntil) > now)) return fail(409, 'This shop is closed.');
+    const item = (Array.isArray(shop.items) ? shop.items : []).find(x => x && x.ref === ref);
+    if(!item || !MARKET.assets.includes(item.asset)) return fail(404, 'This item is no longer listed.');
+    const unit = Number(item.price);
+    if(!Number.isInteger(unit) || unit < 1) return fail(409, 'This item has no valid price.');
+    if(unit !== price) return fail(409, 'The price has changed. Look again before buying.');
+    const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM xl_orders WHERE buyer = ?1 AND status = 'paid'").bind(me.uid).first();
+    if(open && Number(open.n) >= MARKET.maxOpenPerBuyer) return fail(429, 'You have too many orders waiting. Wait for merchants to fill them.');
+    const total = qty * unit, fee = Math.floor(total * MARKET.feeBps / 10000);
+    // One statement: the order is written only if the listing still has enough stock, so two buyers can never oversell it.
+    const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'paid', ?10, ?10
+      WHERE (SELECT COALESCE(SUM(qty), 0) FROM xl_orders WHERE seller = ?3 AND ref = ?4 AND status IN ('paid', 'filled')) + ?6 <= ?11`)
+      .bind(oid, me.uid, seller, ref, item.asset, qty, unit, total, fee, now, Math.max(0, Math.floor(Number(item.qty) || 0))).run();
+    if(!r.meta.changes){
+      const dup = await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first();
+      if(dup && dup.buyer === me.uid) return json({ok:true, order: orderOut(dup)});
+      return fail(409, 'Not enough of this item is left.');
+    }
+    return json({ok:true, order: orderOut(await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first())});
+  }
+
+  if(p.startsWith('/api/market/') && req.method === 'POST' && ['fill', 'decline', 'cancel'].includes(p.slice(12))){
+    const act = p.slice(12), oid = q.get('oid') || '';
+    if(!ID_RE.test(oid)) return fail(400, 'Invalid order.');
+    const sql = act === 'cancel'
+      ? "UPDATE xl_orders SET status = 'cancelled', updated = ?2 WHERE oid = ?1 AND buyer = ?3 AND status = 'paid' AND created <= ?4"
+      : `UPDATE xl_orders SET status = '${act === 'fill' ? 'filled' : 'declined'}', updated = ?2 WHERE oid = ?1 AND seller = ?3 AND status = 'paid'`;
+    const r = await (act === 'cancel' ? env.DB.prepare(sql).bind(oid, now, me.uid, now - MARKET.cancelAfterMs) : env.DB.prepare(sql).bind(oid, now, me.uid)).run();
+    const o = await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first();
+    if(!o || (o.buyer !== me.uid && o.seller !== me.uid)) return fail(404, 'No such order.');
+    if(!r.meta.changes) return fail(409, act === 'cancel' && o.status === 'paid' ? 'An order can be cancelled 24 hours after it was placed.' : `This order is already ${o.status}.`);
+    if(act === 'fill'){ await addWorld(env, 'market_sales', 1); await addWorld(env, 'market_volume', Number(o.total)); await addWorld(env, 'market_fees', Number(o.fee)); }
+    return json({ok:true, order: orderOut(o)});
   }
 
   if(p === '/api/sync' && req.method === 'GET'){

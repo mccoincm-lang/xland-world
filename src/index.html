@@ -863,8 +863,8 @@ const PLACES = [
  {id:'exes', act:true, name:'Exes', region:'xetropolitan', d:'culture', at:[411,405], r:9, desc:'Exhibitions for non-artistic digital assets.'},
  {id:'cinex', act:true, name:'Cinex', region:'xetropolitan', d:'culture', at:[378,377], r:9, desc:'Cinema, series and media viewing.'},
  {id:'conxert', act:true, name:'Conxert', region:'xetropolitan', d:'culture', at:[378,404], r:10, desc:'Music archive and virtual concert experience.'},
- {id:'plaxa', name:'Plaxa', region:'xetropolitan', d:'market', at:[458,432], r:15, desc:'Retail buildings and malls. In the original concept, Plaxa exists only in Xetropolitan.', phase:5},
- {id:'shoppex', act:true, name:'Shoppex', region:'xetropolitan', d:'market', at:[486,440], r:8, desc:'Individual shops within Plaxa.'},
+ {id:'plaxa', act:true, name:'Plaxa', region:'xetropolitan', d:'market', at:[458,432], r:15, desc:'Retail buildings and malls, and the market where citizens buy from each other\'s shops. Plaxa exists only in Xetropolitan.'},
+ {id:'shoppex', act:true, name:'Shoppex', region:'xetropolitan', d:'market', at:[486,440], r:8, desc:'Individual shops within Plaxa. Lease a unit, build a shopfront and sell what you produce to other citizens.'},
  {id:'storex', name:'Storex', region:'xetropolitan', d:'market', at:[506,416], r:12, desc:'Storage and warehouse platforms.'},
  {id:'xarage', name:'Xarage', region:'xetropolitan', d:'market', at:[432,427], r:9, desc:'Multi-level parking.'},
  {id:'xtadium', name:'Xtadium', region:'xetropolitan', d:'leisure', at:[514,330], r:20, desc:'Sports, online games and events. Real-money betting is not part of the prototype.'},
@@ -1380,7 +1380,7 @@ const LS_KEY = 'xland.proto.v1';
 function fresh(){ return {v:2, passport:false, identity:'visitor', passportId:null, handle:'', paths:[], affinity:null, currentRegion:null,
   visited:[], inspected:[], read:[], discovered:[], quests:{}, chronicle:[], createdAt:null, updatedAt:0,
   bal:{bux:'0',lex:'0',vegiex:'0',livestox:'0',quarx:'0'}, locked:{bux:'0',lex:'0',vegiex:'0',livestox:'0',quarx:'0'}, ledger:[],
-  laws:[], govDraft:null, emergency:null, programs:{}, resale:{}, plot:null, plotOwn:null, mine:null, mineLog:[], proposals:[], rights:[], projects:[], buildings:[], parcelFocus:null, rentals:[], items:[], rareBought:{}, events:[], placeVisits:[], services:{}, worldEvents:[], eventDay:null, eventCooldown:{}, mstate:{}, branches:{}, dyn:[], transitions:[], privacy:{name:'public', title:'public', relations:'citizens', chronicle:'private'}, demand:{}, quotedVenues:{}, fedCity:false, ach:[], title:null, lastSeen:0, search:null, searchLog:[], attended:[], homes:[], listing:null, construct:null, builds:[], blocked:[], notified:{}}; }
+  laws:[], govDraft:null, emergency:null, programs:{}, resale:{}, plot:null, plotOwn:null, mine:null, mineLog:[], proposals:[], rights:[], projects:[], buildings:[], parcelFocus:null, rentals:[], shop:null, listings:[], items:[], rareBought:{}, events:[], placeVisits:[], services:{}, worldEvents:[], eventDay:null, eventCooldown:{}, mstate:{}, branches:{}, dyn:[], transitions:[], privacy:{name:'public', title:'public', relations:'citizens', chronicle:'private'}, demand:{}, quotedVenues:{}, fedCity:false, ach:[], title:null, lastSeen:0, search:null, searchLog:[], attended:[], homes:[], listing:null, construct:null, builds:[], blocked:[], notified:{}}; }
 function newPassportId(){ return 'XL-'+Date.now().toString(36).toUpperCase().slice(-5)+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }
 function migrate(s){ s = s ? JSON.parse(JSON.stringify(s)) : s; /* snapshots from the shared database are frozen: always work on a mutable deep copy */ const f=fresh(); const o=Object.assign(f, s||{}); o.bal=Object.assign(fresh().bal, o.bal||{});
   delete o.xp; delete o.rep; delete o.titles;
@@ -1404,7 +1404,8 @@ const OPMETA = [
   ['homax-acquire','PROPERTY_SALE','ximberland','treasury:ximberland'], ['parcel-XIM','PROPERTY_SALE','ximberland','treasury:ximberland'], ['parcel-FX','PROPERTY_SALE','farmx','treasury:farmx'], ['parcel-XET','PROPERTY_SALE','xetropolitan','treasury:xetropolitan'],
   ['proj-','LOCK','farmx','player:locked'], ['rent-resort','TRANSFER','xalp','treasury:xalp'], ['rent-shoppex','TRANSFER','xetropolitan','treasury:xetropolitan'],
   ['rare-','TRANSFER','xahara','external:outside-seller'], ['presale-','TRANSFER','xalp','source:forerunner-vaults'], ['build-lock','LOCK','xetropolitan','player:locked'], ['build-unlock','UNLOCK','xetropolitan','player:locked'],
-  ['build-consume','CONSUME','xetropolitan','consumed:civicsite'], ['build-fund','CONSUME','xetropolitan','consumed:civicsite'], ['burn-','BURN','xasteland','burn']
+  ['build-consume','CONSUME','xetropolitan','consumed:civicsite'], ['shop-lock','LOCK','xetropolitan','player:locked'], ['shop-build','CONSUME','xetropolitan','consumed:shopfront'],
+  ['mkt-list','LOCK','xetropolitan','player:locked'], ['mkt-unlist','UNLOCK','xetropolitan','player:locked'], ['mkt-deliver','CONSUME','xetropolitan','buyer'], ['mkt-pay','TRANSFER','xetropolitan','escrow:plaxa'], ['mkt-refund','TRANSFER','xetropolitan','escrow:plaxa'], ['mkt-sale','MARKET','xetropolitan','escrow:plaxa'], ['mkt-recv','MARKET','xetropolitan','shop'], ['mkt-fee','TRANSFER','xetropolitan','treasury:xetropolitan'], ['build-fund','CONSUME','xetropolitan','consumed:civicsite'], ['burn-','BURN','xasteland','burn']
 ];
 const l0=lines=>lines.some(l=>String(l[2]||'').startsWith('logistics')&&l[1]!==0n);
 function opMeta(op){ return OPMETA.find(m=>op.startsWith(m[0]))||['','TRANSFER',null,'unknown']; }
@@ -1417,7 +1418,7 @@ function postLedger(st, op, lines, reason, ref){
   for(const [a,d,cp] of lines){ if(d===0n) continue; const c=cp||m[3];
     st.bal[a]=(BigInt(st.bal[a]||'0')+d).toString();
     st.ledger.push({op, event:m[1], asset:a, delta:d.toString(), qty:(d<0n?-d:d).toString(), from:d<0n?'player':c, to:d<0n?c:'player', territory:m[2], actor:'player', reason, ref:ref||null, cfg:ECON_VERSION, at}); }
-  const ev={PRODUCTION:op.startsWith('mine-')?'EXTRACTION_COMPLETED':'PRODUCTION_COMPLETED', SWAP:'TRADE_SETTLED', PROPERTY_SALE:'PROPERTY_ACQUIRED'}[m[1]] || (op.startsWith('rent-')?'USE_RIGHT_CHANGED':op.startsWith('rare-')?'PROPERTY_ACQUIRED':null);
+  const ev={PRODUCTION:op.startsWith('mine-')?'EXTRACTION_COMPLETED':'PRODUCTION_COMPLETED', SWAP:'TRADE_SETTLED', MARKET:'TRADE_SETTLED', PROPERTY_SALE:'PROPERTY_ACQUIRED'}[m[1]] || (op.startsWith('rent-')?'USE_RIGHT_CHANGED':op.startsWith('rare-')?'PROPERTY_ACQUIRED':null);
   if(ev && st.passport) emitTo(st,ev,{op,territory:m[2]}); if(lines.some(l=>String(l[2]||'').startsWith('logistics'))&&l0(lines)) emitTo(st,'LOGISTICS_CHARGED',{op});
   return true;
 }
@@ -1429,7 +1430,7 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
   else if(kind==='UNLOCK'){ if(lk<qty) return false; dAv=qty; dLk=-qty; from='player:locked'; to='player'; }
   else { if(lk<qty) return false; dLk=-qty; from='player:locked'; to=dest; }
   st.bal[asset]=(av+dAv).toString(); st.locked[asset]=(lk+dLk).toString();
-  emitTo(st,{LOCK:'BUILD_RESERVED',UNLOCK:'BUILD_FAILED',CONSUME:'BUILD_COMMITTED'}[kind],{op});
+  emitTo(st,op.startsWith('mkt-')?{LOCK:'GOODS_LISTED',UNLOCK:'GOODS_UNLISTED',CONSUME:'GOODS_DELIVERED'}[kind]:{LOCK:'BUILD_RESERVED',UNLOCK:'BUILD_FAILED',CONSUME:'BUILD_COMMITTED'}[kind],{op});
   st.ledger.push({op, event:kind, asset, delta:dAv.toString(), lockDelta:dLk.toString(), qty:qty.toString(), from, to, territory:opMeta(op)[2], actor:'player', reason, ref:ref||null, cfg:ECON_VERSION, at:Date.now()});
   return true;
 }
@@ -1452,7 +1453,7 @@ function difficultyFor(miners){ return Math.max(1, miners/ECONOMY.targetMiners);
 let world=null;
 async function refreshWorld(){ if(!serverMode||!serverBE) return; try{ world=await serverBE.call('GET','/world'); world.at=Date.now(); }catch(e){ return; }
   const {route,arg}=parse(); if(route==='place' && ['quarx','vaults','banx'].includes(arg)){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
-  const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML(); }
+  const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML()+worldMarketHTML(); }
 function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx'].includes(arg))||route==='economy'; }
 const fmtU = (u, dp=0) => (Number(u)/Number(UNIT)).toLocaleString('en-US',{maximumFractionDigits:dp});
 function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the world ledger…</p>':'';
@@ -1472,8 +1473,8 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD='r43';
-const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
+const BUILD = 'r44';
+const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
 function regionNotes(){ const out={}; if(!social.db) return out; REGIONS.forEach(r=>{ const n=citizensOnline(r.id).length+(state.passport&&state.currentRegion===r.id?1:0); if(n) out[r.id]=`${n} here now`; }); return out; }
@@ -1483,6 +1484,7 @@ function socialChanged(){ clearTimeout(socialChanged.t); socialChanged.t=setTime
   const {route,arg}=parse(); const typing=document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
   if(route==='world'){ XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); const pn=$('#world-panel'); if(pn && ui.parcel && PBY[ui.parcel]) pn.innerHTML=panelParcel(PBY[ui.parcel]); else if(pn && ui.selected && !ui.place) pn.innerHTML=panelDetail(R[ui.selected]); }
   else if(route==='place' && arg==='complex' && !typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL.complex); }
+  else if(route==='place' && (arg==='plaxa'||arg==='shoppex') && !typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
   else if(route==='place' && arg==='parx'){ const a=$('#ppx-list'); if(a) a.innerHTML=parxListHTML(); const c=$('#ppx-citizens'); if(c) c.innerHTML=citizenCardsHTML(); }
   else if(!typing && ['region','parcel'].includes(route)) render(); },350); }
 async function socialInit(db, uid, u){
@@ -1493,12 +1495,14 @@ async function socialInit(db, uid, u){
   db.collection('posts').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.posts=m; socialChanged(); }, err);
   db.collection('gov').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.gov=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
   db.collection('ballots').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.ballots=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
+  db.collection('shops').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.shops=m; socialChanged(); }, err);
   db.collection('claims').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.claims=m; socialChanged(); backfillClaims(); }, err);
-  publishCitizen(); publishProgress(); setInterval(()=>{ publishCitizen(); publishProgress(); }, 120000);
+  publishCitizen(); publishProgress(); publishShop(); setInterval(()=>{ publishCitizen(); publishProgress(); }, 120000);
+  if(serverMode){ marketSync(); setInterval(()=>{ if(marketWanted()) marketSync(); }, 15000); }
   if(social.isOwner){ db.collection('progress').onSnapshot(sn=>{ social.progress=sn.docs.filter(d=>d.exists).map(d=>Object.assign({id:d.id},clonePlain(d.data()))); if(parse().route==='founder') render(); }, err);
     db.collection('feedback').onSnapshot(sn=>{ const out=[]; sn.docs.filter(d=>d.exists).forEach(d=>(clonePlain(d.data()).items||[]).forEach(it=>out.push(Object.assign({uid:d.id},it)))); social.feedback=out.sort((a,b)=>b.at-a.at); if(parse().route==='founder') render(); }, err); }
   render(); }
-function schedulePublish(){ if(!social.db) return; clearTimeout(social.pubTimer); social.pubTimer=setTimeout(()=>{ publishCitizen(); publishProgress(); }, 2500); }
+function schedulePublish(){ if(!social.db) return; clearTimeout(social.pubTimer); social.pubTimer=setTimeout(()=>{ publishCitizen(); publishProgress(); publishShop(); }, 2500); }
 function milestones(st){ st=st||state; const L=st.ledger, has=p=>L.some(e=>e.op.startsWith(p));
   return { passport:!!st.passport, visited:(st.visited||[]).length>0, harvest:has('prod-'), trade:has('swap-'), quarx:has('mine-')||has('presale-'), parcel:(st.rights||[]).some(r=>r.status==='active'), home:(st.homes||[]).length>0,
     build:(st.buildings||[]).length>0||(st.builds||[]).length>0, vote:(st.proposals||[]).some(p=>p.myVote)||(st.sharedVotes||0)>0, parx:(st.parxPosts||0)>0, mission:Object.entries(st.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='rewarded'), firstSteps:!!(st.guide&&st.guide.finished) }; }
@@ -1509,7 +1513,7 @@ function myStructures(){ const out=[]; (state.rights||[]).filter(r=>r.status==='
 async function publishCitizen(){ if(!social.db || !social.me || !state.passport || !social.writable) return; const pv=state.privacy||{};
   const card={ v:1, handle: pv.name!=='private'?state.handle:'', title: pv.title!=='private'&&state.title&&ACH.find(a=>a.id===state.title)?ACH.find(a=>a.id===state.title).name:'',
     identity: state.identity, region: (pv.presence||'citizens')!=='private'?(state.currentRegion||null):null, home: pv.relations!=='private'&&state.homes[0]?state.homes[0].region:null,
-    structures: pv.relations!=='private'?myStructures():[], lastSeen: Date.now() };
+    structures: pv.relations!=='private'?myStructures():[], shop: state.shop?state.shop.name:null, lastSeen: Date.now() };
   try{ await social.db.doc('citizens/'+social.me).set(card); }catch(e){ if(e&&e.code==='invalid_argument'){ social.writable=false; render(); } } }
 async function backfillClaims(){ if(!social.db || !social.writable || backfillClaims.done) return; backfillClaims.done=true;
   for(const r of (state.rights||[]).filter(x=>x.status==='active')){ if(social.claims[r.parcel]) continue; try{ await social.db.doc('claims/'+r.parcel).set({owner:social.me, handle:(state.privacy||{}).name!=='private'?state.handle:'', parcel:r.parcel, at:r.startAt}); }catch(e){} } }
@@ -2810,6 +2814,22 @@ function runSelfTests(){
   t('Flip fee is 20% early and falls to zero by day 180', ()=>flipFeeBps(5*86400000)===2000 && flipFeeBps(105*86400000)===1000 && flipFeeBps(200*86400000)===0);
   t('Idle land pays once a day after the grace period; used land pays nothing', ()=>{ const c=clone(); c.currentRegion='farmx'; acquireParcel(c,'FX-A-01'); const r=c.rights[0]; r.idleSince=Date.now()-20*86400000; r.idleDay=null; const before=BigInt(c.bal.bux); applyIdleFees(c); const mid=BigInt(c.bal.bux); applyIdleFees(c); const paid=before-mid; const c2=clone(); c2.currentRegion='farmx'; acquireParcel(c2,'FX-A-01'); c2.buildings=[{parcel:'FX-A-01',def:'farmstead'}]; const b2=BigInt(c2.bal.bux); c2.rights[0].idleSince=Date.now()-20*86400000; applyIdleFees(c2); return paid>0n && BigInt(c.bal.bux)===mid && BigInt(c2.bal.bux)===b2; });
   t('Presale QuarX can build but cannot be sold before release', ()=>{ const c=clone(); const r=presaleBuy(c,3); const lockedTrade=tradableQuarx(c)===0n && vestedQuarx(c)===3n*UNIT; useVested(c,2n*UNIT); return r.ok && lockedTrade && vestedQuarx(c)===UNIT && !presaleBuy(c,3).ok; });
+  const shopper=()=>{ const c=clone(); c.rentals=[{place:'shoppex', start:Date.now(), end:Date.now()+86400000}]; postLedger(c,'mine-shop',[['quarx',5n*UNIT]],'t'); postLedger(c,'prod-shop',[['vegiex',10n*UNIT]],'t'); return c; };
+  t('A shopfront needs a Shoppex lease and consumes its QuarX once', ()=>{ const c=clone(); postLedger(c,'mine-s0',[['quarx',5n*UNIT]],'t'); const noLease=!openShop(c,'Test').ok; const d=shopper(), a=openShop(d,'Test').ok, b=openShop(d,'Test').ok;
+    return noLease && a && !b && d.bal.quarx===String(5n*UNIT-BigInt(SIM.shopfrontQuarx)*UNIT) && d.locked.quarx==='0' && d.ledger.some(e=>e.op==='shop-build-main'&&e.to==='consumed:shopfront') && reconcile(d); });
+  t('Shops list only what the citizen produced, and listed goods are reserved', ()=>{ const c=shopper(); openShop(c,'Test'); postLedger(c,'swap-forgex-in',[['livestox',4n*UNIT],['bux',-UNIT]],'t');
+    const bought=!listGoods(c,'livestox',1,UNIT,'l1').ok, over=!listGoods(c,'vegiex',11,UNIT,'l2').ok, ok=listGoods(c,'vegiex',6,UNIT,'l3').ok, again=!listGoods(c,'vegiex',5,UNIT,'l4').ok;
+    return bought && over && ok && again && c.locked.vegiex===String(6n*UNIT) && c.bal.vegiex===String(4n*UNIT) && reconcile(c); });
+  t('A market order settles once on each side, with the fee to the treasury', ()=>{ const s=shopper(); openShop(s,'Test'); listGoods(s,'vegiex',5,2n*UNIT,'l1'); const b=clone(), bux0=BigInt(b.bal.bux), sb0=BigInt(s.bal.bux);
+    const o={oid:'o-t1', buyer:'B', seller:'S', ref:'l1', asset:'vegiex', qty:3, total:String(6n*UNIT), fee:String(6n*UNIT/100n), status:'paid'};
+    const paid=marketPay(b,o,'Test') && !marketPay(b,o,'Test'); o.status='filled'; const d1=marketDeliver(s,o), d2=marketDeliver(s,o), r1=marketReceive(b,o), r2=marketReceive(b,o), noRefund=!marketRefund(b,o);
+    return paid && d1 && !d2 && r1 && !r2 && noRefund && BigInt(b.bal.bux)===bux0-6n*UNIT && b.bal.vegiex===String(3n*UNIT) && BigInt(s.bal.bux)===sb0+6n*UNIT-6n*UNIT/100n
+      && s.locked.vegiex===String(2n*UNIT) && accountBalanceSt(s,'treasury:xetropolitan','bux')===6n*UNIT/100n && reconcile(s) && reconcile(b); });
+  t('A declined order refunds the buyer exactly once; sold goods cannot be oversold', ()=>{ const s=shopper(); openShop(s,'Test'); listGoods(s,'vegiex',2,UNIT,'l1'); const b=clone(), bux0=BigInt(b.bal.bux);
+    const o={oid:'o-t2', buyer:'B', seller:'S', ref:'l1', asset:'vegiex', qty:3, total:String(3n*UNIT), fee:'0', status:'paid'}; marketPay(b,o,'Test'); const cant=!canDeliver(s,o) && !marketDeliver(s,o);
+    o.status='declined'; const a=marketRefund(b,o), c2=marketRefund(b,o); return cant && a && !c2 && BigInt(b.bal.bux)===bux0 && !marketReceive(b,o) && reconcile(b) && reconcile(s); });
+  t('Taking goods down returns only what is left', ()=>{ const s=shopper(); openShop(s,'Test'); listGoods(s,'vegiex',4,UNIT,'l1'); const o={oid:'o-t3', buyer:'B', seller:'S', ref:'l1', asset:'vegiex', qty:1, total:String(UNIT), fee:'0', status:'filled'};
+    marketDeliver(s,o); const blocked=!unlistGoods(s,'l1',true).ok, ok=unlistGoods(s,'l1',false).ok; return blocked && ok && s.locked.vegiex==='0' && s.bal.vegiex===String(9n*UNIT) && !s.listings.length && reconcile(s); });
   t('Your wallet reconciles with the ledger', ()=>reconcile(state));
   return T;
 }
@@ -2825,7 +2845,7 @@ function viewEconomy(){
   const st=s=>`<span class="cs cs-${s.toLowerCase()}">${s}</span>`;
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Civilization ledger</h1><p class="lede">Where every unit in your Xland comes from and where it goes. Treasuries, escrow and burns are ledger accounts, not magic balances.</p></div><span class="sim-badge">Simulation ${ECON_VERSION}</span></div>
-    ${serverMode?`<h2 class="display eh">The world ledger</h2><p class="lede" style="margin-bottom:1rem">Kept by the server for all citizens together: no one can change these numbers from their own device.</p><div id="econ-world" class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}</div>`:''}
+    ${serverMode?`<h2 class="display eh">The world ledger</h2><p class="lede" style="margin-bottom:1rem">Kept by the server for all citizens together: no one can change these numbers from their own device.</p><div id="econ-world" class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
     <h2 class="display eh">Territory economy matrix</h2><div class="tbl"><table class="wide"><thead><tr><th>Territory</th><th>Role</th><th>Outputs</th><th>Inputs</th><th>Constraint</th><th>Dependency value</th></tr></thead><tbody>${REGIONS.map(r=>{ const P=PROFILE[r.id]; return `<tr><td><b>${esc(r.name)}</b></td><td>${esc(P.role)}</td><td>${esc(P.outputs)}</td><td>${esc(P.inputs)}</td><td>${esc(TERR[r.id].constraint)}</td><td>${esc(P.dependency)}</td></tr>`; }).join('')}</tbody></table></div>
     <h2 class="display eh">Imports and exports</h2><div class="tbl"><table class="wide"><thead><tr><th>From</th><th>To</th><th>Flow</th><th>Why</th><th>Status</th><th>Route now</th></tr></thead><tbody>${FLOWS.map(([f,t,fl,w,st])=>`<tr><td>${esc(R[f].name)}</td><td>${esc(R[t].name)}</td><td>${esc(fl)}</td><td>${esc(w)}</td><td>${esc(st)}</td><td>${routeDisrupted(f,t)?'<b style="color:var(--warn)">Disrupted</b>':'Normal'}</td></tr>`).join('')}</tbody></table></div>
     <h2 class="display eh">Simulation lab</h2><p class="meta" style="margin-bottom:.8rem">World Architect tool for the prototype. Trigger a configured disruption and watch it change routes, extraction and harvests. Magnitudes are simulation parameters.</p>
@@ -2902,11 +2922,12 @@ function capabilities(){ const s=state, out=[], cap=(n,ok,why,go)=>out.push({n,o
   cap('Extract QuarX', s.passport&&s.currentRegion==='xalp'&&!s.mine&&minedToday()<quarxCap(), !s.passport?'Needs a passport.':s.currentRegion!=='xalp'?'You must be in Xalp.':minedToday()>=quarxCap()?'Capacity used up today.':s.mine?'A seam is in progress.':'Ready.', '#/place/quarx');
   cap('Trade', s.passport&&bux>0n, s.passport?'Markets are places: trade where you stand, under local law.':'Needs a passport.', '#/place/forgex');
   { const avail=PARCELS.filter(pp=>parcelAvail(pp)==='AVAILABLE'); cap('Acquire property', s.passport&&avail.length>0, !s.passport?'Needs a passport.':avail.length?`${avail.length} parcels available; acquisition happens on site.`:'No parcels available right now.', '#/place/homax'); }
+  cap('Sell to citizens', !!s.shop&&shopIsOpen(), !s.shop?'Lease a Shoppex unit in Plaxa and build a shopfront with QuarX.':!shopIsOpen()?'Your Shoppex lease has ended.':`Your shop ${s.shop.name} is open in Plaxa.`, '#/place/shoppex');
   cap('Construct', !s.builds.length&&lawOn('permit-special')&&q>=BigInt(SIM.monumentQuarx)*UNIT, s.builds.length?'Your Special Building is complete.':!lawOn('permit-special')?'Needs a passed motion at CompleX.':q<BigInt(SIM.monumentQuarx)*UNIT?'Needs QuarX from Xalp.':'Ready at the Civic plaza.', '#/place/civicsite');
   cap('Use institutions', !!s.passport, s.passport?'Institutions open to Hotex Guests and above.':'Needs a passport.', '#/place/xcool');
   cap('Govern', eligibleToVote(), eligibleToVote()?'Eligible under sandbox rules. Lex thresholds and vote weight remain TBD.':'Needs residency under sandbox rules. Lex rules are TBD.', '#/place/complex');
   return out; }
-function rolesOf(){ const s=state, r=[]; if(s.ledger.some(e=>e.event==='PRODUCTION')) r.push('Producer'); if(s.ledger.some(e=>e.event==='SWAP')) r.push('Trader'); if(s.builds.length) r.push('Builder');
+function rolesOf(){ const s=state, r=[]; if(s.ledger.some(e=>e.event==='PRODUCTION')) r.push('Producer'); if(s.ledger.some(e=>e.event==='SWAP'||e.event==='MARKET')) r.push('Trader'); if(s.shop) r.push('Merchant'); if(s.builds.length) r.push('Builder');
   if(s.homes.length||s.rentals.length||s.items.length) r.push('Property holder'); if(Object.keys(s.services).length||s.attended.length||s.proposals.some(p=>p.myVote)) r.push('Civic participant'); if(s.visited.length>=4) r.push('Explorer'); return r; }
 function reputationEvidence(){ const s=state, L=s.ledger, ops=p=>new Set(L.filter(e=>e.op.startsWith(p)).map(e=>e.op)).size, contrib=(s.worldEvents||[]).reduce((a,e)=>a+(e.contribs||[]).length,0);
   return [['Reliability',[`Missions completed: ${Object.values(s.mstate).filter(v=>v==='rewarded').length}`,`Operations settled: ${new Set(L.filter(e=>e.actor==='player').map(e=>e.op)).size}`]],
@@ -2923,7 +2944,7 @@ function viewProfile(){
     <div class="pp-artifact glass">${guilloche()}
       <span class="pp-crest">${s.affinity&&R[s.affinity]?emblem(s.affinity,77):compassRose('xl-emblem')}</span>
       <div class="pp-top"><span class="pp-emblem">${ICON.mark}</span><div><p class="meta">XLAND passport · simulated identity</p><p class="meta">Citizen ID <b>${esc(s.passportId)}</b></p></div><span class="sim-badge">${esc(identityName())}</span></div>
-      <h1 class="display" dir="auto">${esc(s.handle)}</h1>${s.title?`<p class="people" style="margin:0">${esc(ACH.find(a=>a.id===s.title).name)}</p>`:''}
+      <h1 class="display" dir="auto">${esc(s.handle)}</h1>${s.title?`<p class="people" style="margin:0">${esc(ACH.find(a=>a.id===s.title).name)}</p>`:''}${s.shop?`<p class="pp-licence"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${shopIsOpen()?'open':'locked'}"/></svg><span><b>Merchant licence</b> <a class="link" href="#/place/shoppex" dir="auto">${esc(s.shop.name)}</a>, Shoppex in Plaxa${shopIsOpen()?'':' (closed)'}</span></p>`:''}
       <ol class="ladder" aria-label="Identity states">${LADDER.map((l,k)=>`<li class="${k<li?'done':k===li?'now':''}"><b>${l.name}</b><span>${k<=li?esc(l.meaning):esc(l.how)}</span></li>`).join('')}</ol>
       <dl class="kv" style="margin-top:1.4rem"><dt>Arrived</dt><dd>${fmtDate(s.createdAt)} at Hotex</dd><dt>Authentication</dt><dd>${serverMode?'Citizen key on this device, shared world of xland.world':accountLinked?'Signed-in account, linked':'Local browser session'}. Separate from citizenship.</dd><dt>Administrative state</dt><dd>None. Restriction requires an auditable policy reason.</dd></dl>
       <div class="swap-row" style="margin-top:1rem"><label class="meta" for="pp-name">Display name (your citizen ID never changes)</label><div style="display:flex;gap:.6rem"><input class="input" id="pp-name" dir="auto" maxlength="24" style="flex:1;min-width:0" value="${esc(s.handle)}"><button class="btn btn-quiet" data-act="p-name">Save</button></div></div>
@@ -2994,7 +3015,7 @@ async function sendFeedback(){ const text=(($('#fb-text')||{}).value||'').trim()
   const item={id:Date.now().toString(36), text, rating:fbRating||null, route:location.hash||'#/', identity:state.identity, handle:(state.privacy||{}).name!=='private'?state.handle:'', build:BUILD, at:Date.now(), ua:navigator.userAgent.slice(0,120)};
   state.feedbackSent=(state.feedbackSent||[]).concat([item]).slice(-20);
   if(social.db&&social.writable){ try{ const ref=social.db.doc('feedback/'+social.me); const sn=await ref.get(); const d=sn.exists?clonePlain(sn.data()):{items:[]}; d.items=(d.items||[]).concat([item]).slice(-50); await ref.set(d); toast('Thank you. The founder will read it.'); }catch(e){ toast('Saved on this device; it could not be sent right now.'); } }
-  else toast('Saved on this device. Shared feedback works when Xland is opened with Contributor access.');
+  else toast('Saved on this device. It will reach the founder when the shared world is reachable again.');
   save(); $('#fb').hidden=true; $('#fb').innerHTML=''; }
 const FUNNEL=[['passport','Passport inscribed'],['visited','Entered a territory'],['harvest','First harvest'],['trade','First trade'],['quarx','First QuarX'],['parcel','First parcel'],['home','Residence'],['build','Built something'],['vote','Voted'],['parx','Spoke in ParX'],['mission','Completed a mission'],['firstSteps','Finished first steps']];
 function viewFounder(){
@@ -3234,14 +3255,140 @@ function actResort(){
     <div class="choices">${opts.map(([n,l])=>{ const price=n*SIM.resortNight, ok=BigInt(state.bal.bux)>=BigInt(price)*UNIT;
       return `<div class="choice glass"><b>${l}</b><p class="meta">${price} BuX. Tax: none.${expTag}</p><button class="btn btn-quiet" data-act="rent" data-id="resort" data-n="${n}" ${ok&&!active?'':'disabled'}>Rent</button></div>`; }).join('')}</div>`;
 }
+/* ---------------- Plaxa market: citizen shops ----------------
+   A citizen with a Shoppex lease builds a shopfront (its QuarX is consumed for good) and lists goods they produced
+   themselves; listed goods are reserved. Orders live in the server's order book, which never oversells a listing and
+   moves each order through paid → filled | declined | cancelled exactly once. Each side then settles its own wallet
+   from that status, and every settlement has a unique ledger op, so repeating a sync can never pay twice.
+   Rates are provisional alpha parameters (worker.js MARKET mirrors them). */
+SIM.shopfrontQuarx = 3; SIM.marketFeeBps = 100; SIM.marketCancelHours = 24; SIM.maxListings = 6;
+const MKT_ASSETS = ['vegiex','livestox','quarx'];
+const symOf = a => (ASSETS.find(x=>x.id===a)||{sym:a}).sym;
+const market = { buying:[], selling:[], at:0, busy:false, err:'' };
+const hasOp = (st,op) => st.ledger.some(e=>e.op===op);
+function shopLeaseEnd(st){ st=st||state; return Math.max(0, ...(st.rentals||[]).filter(r=>r.place==='shoppex').map(r=>r.end)); }
+function shopIsOpen(st){ return shopLeaseEnd(st) > Date.now(); }
+function sumLedger(st, f){ return st.ledger.filter(f).reduce((a,e)=>a+BigInt(e.qty||'0'),0n); }
+/* Only what the citizen produced, less what they already sold elsewhere or listed: shops are for makers, not flippers. */
+function listableUnits(st, asset){
+  const made=sumLedger(st,e=>e.asset===asset&&e.event==='PRODUCTION'&&BigInt(e.delta||'0')>0n);
+  const soldElsewhere=sumLedger(st,e=>e.asset===asset&&e.event==='SWAP'&&BigInt(e.delta||'0')<0n);
+  const listed=sumLedger(st,e=>e.asset===asset&&e.op.startsWith('mkt-list-'))-sumLedger(st,e=>e.asset===asset&&e.op.startsWith('mkt-unlist-'));
+  const have=asset==='quarx'?tradableQuarx(st):BigInt(st.bal[asset]||'0'), quota=made-soldElsewhere-listed;
+  const n=quota<have?quota:have; return n>0n?n/UNIT:0n; }
+function deliveredUnits(st, ref){ return sumLedger(st,e=>e.op.startsWith('mkt-deliver-')&&e.ref===ref)/UNIT; }
+function listingLeft(st, l){ return BigInt(l.qty)-deliveredUnits(st,l.ref); }
+function openShop(st, name){ name=String(name||'').trim().replace(/\s+/g,' ');
+  if(!st.passport) return {ok:false, why:'Needs a passport.'};
+  if(st.shop) return {ok:false, why:'Your shopfront is already built.'};
+  if(!shopIsOpen(st)) return {ok:false, why:'Lease a Shoppex unit first.'};
+  if(name.length<2||name.length>32) return {ok:false, why:'Give your shop a name of 2 to 32 characters.'};
+  const q=BigInt(SIM.shopfrontQuarx)*UNIT; if(BigInt(st.bal.quarx||'0')<q) return {ok:false, why:`A shopfront needs ${SIM.shopfrontQuarx} QuarX from Xalp.`};
+  if(!lockLedger(st,'shop-lock-main','LOCK','quarx',q,`Shopfront for ${name}: QuarX reserved`,'shoppex')) return {ok:false, why:'Already processed.'};
+  useVested(st,q); lockLedger(st,'shop-build-main','CONSUME','quarx',q,`Shopfront built in Plaxa: ${name}`,'shoppex','consumed:shopfront');
+  st.shop={name, at:Date.now()}; return {ok:true}; }
+function listGoods(st, asset, qty, price, ref){
+  if(!st.shop) return {ok:false, why:'Build your shopfront first.'};
+  if(!shopIsOpen(st)) return {ok:false, why:'Your Shoppex lease has ended. Renew it to trade.'};
+  if(!MKT_ASSETS.includes(asset)) return {ok:false, why:'This shop cannot sell that.'};
+  if(!Number.isInteger(qty)||qty<1||qty>1000) return {ok:false, why:'List a whole quantity from 1 to 1,000.'};
+  if(typeof price!=='bigint'||price<1n||price>1000000n*UNIT) return {ok:false, why:'Set a price per unit, up to 1,000,000 BuX.'};
+  if((st.listings||[]).length>=SIM.maxListings) return {ok:false, why:`A shop holds up to ${SIM.maxListings} listings.`};
+  const can=listableUnits(st,asset); if(BigInt(qty)>can) return {ok:false, why:`You can list only what you produced yourself: ${can} ${symOf(asset)} available.`};
+  if(!lockLedger(st,'mkt-list-'+ref,'LOCK',asset,BigInt(qty)*UNIT,`Listed in ${st.shop.name}: ${qty} ${symOf(asset)} at ${fmtAmt(price)} BuX each`,ref)) return {ok:false, why:'Already listed.'};
+  st.listings=st.listings||[]; st.listings.push({ref, asset, qty, price:price.toString(), at:Date.now()}); return {ok:true}; }
+function unlistGoods(st, ref, pending){
+  const l=(st.listings||[]).find(x=>x.ref===ref); if(!l) return {ok:false, why:'No such listing.'};
+  if(pending) return {ok:false, why:'An order for this item is waiting. It settles within a few seconds; try again then.'};
+  const left=listingLeft(st,l)*UNIT;
+  if(left>0n && !lockLedger(st,'mkt-unlist-'+ref,'UNLOCK',l.asset,left,`Taken down from ${st.shop?st.shop.name:'your shop'}`,ref)) return {ok:false, why:'Already taken down.'};
+  st.listings=st.listings.filter(x=>x!==l); return {ok:true}; }
+function marketPay(st, o, shopName){ return postLedger(st,'mkt-pay-'+o.oid,[['bux',-BigInt(o.total),'escrow:plaxa']],`Order at ${shopName||'a Plaxa shop'}: ${o.qty} ${symOf(o.asset)}, paid into escrow`,o.oid); }
+function marketReceive(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-refund-'+o.oid)) return false;
+  return postLedger(st,'mkt-recv-'+o.oid,[[o.asset,BigInt(o.qty)*UNIT,'shop:'+o.seller]],`Delivered from a Plaxa shop: ${o.qty} ${symOf(o.asset)}`,o.oid); }
+function marketRefund(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-recv-'+o.oid)) return false;
+  return postLedger(st,'mkt-refund-'+o.oid,[['bux',BigInt(o.total),'escrow:plaxa']],`Order ${o.status==='declined'?'declined by the merchant':'cancelled'}: BuX returned from escrow`,o.oid); }
+function canDeliver(st, o){ const l=(st.listings||[]).find(x=>x.ref===o.ref); return !!l && l.asset===o.asset && listingLeft(st,l)>=BigInt(o.qty) && BigInt((st.locked||{})[o.asset]||'0')>=BigInt(o.qty)*UNIT; }
+function marketDeliver(st, o){ if(hasOp(st,'mkt-deliver-'+o.oid) || !canDeliver(st,o)) return false;
+  const fee=BigInt(o.fee), net=BigInt(o.total)-fee, shop=st.shop?st.shop.name:'your shop';
+  lockLedger(st,'mkt-deliver-'+o.oid,'CONSUME',o.asset,BigInt(o.qty)*UNIT,`Sold in ${shop}: ${o.qty} ${symOf(o.asset)}`,o.ref,'buyer:'+o.buyer);
+  postLedger(st,'mkt-sale-'+o.oid,[['bux',net,'escrow:plaxa']],`Sale in ${shop} settled from escrow: ${fmtAmt(o.total)} BuX less ${fmtAmt(fee)} BuX market fee`,o.oid);
+  if(fee>0n) systemMove(st,'mkt-fee-'+o.oid,'TRANSFER','bux',fee,'escrow:plaxa','treasury:xetropolitan','Plaxa market fee to the Xetropolitan treasury','market');
+  const l=st.listings.find(x=>x.ref===o.ref); if(l && listingLeft(st,l)<=0n) st.listings=st.listings.filter(x=>x!==l);
+  return true; }
+const openBuys = st => st.ledger.filter(e=>e.op.startsWith('mkt-pay-')).map(e=>e.op.slice(8)).filter(oid=>!hasOp(st,'mkt-recv-'+oid)&&!hasOp(st,'mkt-refund-'+oid));
+function marketWanted(){ const {route,arg}=parse(); return !!state.shop || openBuys(state).length>0 || (route==='place' && (arg==='plaxa'||arg==='shoppex')); }
+async function marketSync(){ if(!serverBE || !state.passport || market.busy) return; market.busy=true; let changed=false; const notes=[];
+  try{ const j=await serverBE.call('GET','/market/orders'); market.buying=j.buying||[]; market.selling=j.selling||[]; market.at=Date.now(); market.err='';
+    for(const o of market.selling){
+      if(o.status==='paid'){
+        if(canDeliver(state,o)){ try{ const r=await serverBE.call('POST','/market/fill?oid='+encodeURIComponent(o.oid)); Object.assign(o, r.order||{}, {status:'filled'}); }catch(e){ continue; } }
+        else { try{ await serverBE.call('POST','/market/decline?oid='+encodeURIComponent(o.oid)); o.status='declined'; }catch(e){} continue; } }
+      if(o.status==='filled' && marketDeliver(state,o)){ changed=true; notes.push(`Sold ${o.qty} ${symOf(o.asset)} in your shop.`);
+        if(state.ledger.filter(e=>e.op.startsWith('mkt-sale-')).length===1) chron('Market','First sale in Plaxa',`${state.shop?state.shop.name:'Your shop'} sold ${o.qty} ${symOf(o.asset)} to another citizen.`,'xetropolitan','notable'); } }
+    for(const o of market.buying){
+      if(o.status==='filled' && marketReceive(state,o)){ changed=true; const sh=social.shops[o.seller]; notes.push(`Your order from ${sh&&sh.name||'a Plaxa shop'} arrived: ${o.qty} ${symOf(o.asset)}.`); }
+      if((o.status==='declined'||o.status==='cancelled') && marketRefund(state,o)){ changed=true; notes.push(`An order was ${o.status}; your BuX came back.`); } }
+    if(market.buying.length<100){ const known=new Set(market.buying.map(o=>o.oid));   // escrow paid here, but the order never reached the server
+      state.ledger.filter(e=>e.op.startsWith('mkt-pay-') && Date.now()-e.at>10*60000).forEach(e=>{ const oid=e.op.slice(8);
+        if(!known.has(oid) && marketRefund(state,{oid, total:e.qty, status:'cancelled'})){ changed=true; notes.push('An unfinished order was returned to your wallet.'); } }); }
+  }catch(e){ market.err=e.message||'The market cannot be reached right now.'; }
+  market.busy=false;
+  if(changed){ save(); publishShop(); if(notes.length) toast(notes.join(' ')); }
+  const {route,arg}=parse(), typing=document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+  if(route==='place' && (arg==='plaxa'||arg==='shoppex') && !typing){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); } }
+async function publishShop(){ if(!social.db || !social.me || !state.shop || !social.writable) return;
+  const doc={ v:1, name:state.shop.name, handle:(state.privacy||{}).name!=='private'?state.handle:'', openUntil:shopLeaseEnd(), at:Date.now(),
+    items:(state.listings||[]).map(l=>({ref:l.ref, asset:l.asset, qty:l.qty, left:Number(listingLeft(state,l)), price:Number(l.price)})) };
+  try{ await social.db.doc('shops/'+social.me).set(doc); }catch(e){} }
+const ORDER_TEXT = { paid:['Waiting for the merchant','pending'], filled:['Delivered','ok'], declined:['Declined, refunded','no'], cancelled:['Cancelled, refunded','no'] };
+function orderRow(o, side){ const sh=social.shops[side==='buy'?o.seller:o.buyer], who=side==='buy'?(sh&&sh.name||'A Plaxa shop'):(citizenName(social.citizens.find(c=>c.id===o.buyer))), st=ORDER_TEXT[o.status]||[o.status,'pending'];
+  const canCancel=side==='buy' && o.status==='paid' && Date.now()-o.created>=SIM.marketCancelHours*3600000;
+  return `<tr><td dir="auto">${esc(who)}</td><td>${o.qty} ${symOf(o.asset)}</td><td>${fmtAmt(BigInt(o.total))} BuX</td><td><span class="ord ord-${st[1]}">${st[0]}</span>${canCancel?` <button class="link link-muted" data-act="mkt-cancel" data-id="${esc(o.oid)}">Cancel</button>`:''}</td><td class="meta upd">${fmtDate(o.updated)}</td></tr>`; }
+function ordersTable(list, side){ return list.length?`<div class="tbl"><table><thead><tr><th>${side==='buy'?'Shop':'Buyer'}</th><th>Goods</th><th>Total</th><th>Status</th><th class="upd">Updated</th></tr></thead><tbody>${list.slice(0,20).map(o=>orderRow(o,side)).join('')}</tbody></table></div>`:`<p class="meta">${side==='buy'?'No orders yet.':'No sales yet. Orders arrive here and settle by themselves while Xland is open.'}</p>`; }
+function shopsOffline(){ return `<div class="lawcard"><b>The market needs the shared world</b><p>Shops trade between real citizens on xland.world, and the shared world cannot be reached from this view. Reload the page in a moment.</p></div>`; }
 function actShop(){
   const g=presence('xetropolitan'); if(g) return g;
-  const active=state.rentals.find(r=>r.place==='shoppex' && r.end>Date.now()), ok=BigInt(state.bal.bux)>=BigInt(SIM.shopRent)*UNIT;
-  return `<h2 class="act-h">Lease a Shoppex unit</h2><p class="meta">Urban property inside Plaxa. ${esc(TERR.xetropolitan.tax.note)}</p>
-    <ul class="checks"><li class="ok">Territory: Xetropolitan, where Plaxa exists</li><li class="${ok?'ok':'no'}">Rent: ${SIM.shopRent} BuX for ${SIM.shopDays} days${expTag}</li>
-    <li class="pending">Urban tax: applies to residents, rate TBD. ${state.homes.some(h=>h.region==='xetropolitan')?'You are a resident here.':'You are not a resident here.'}</li></ul>
-    ${active?`<p class="lede" style="font-size:1rem">Your lease runs until ${fmtDate(active.end)}. Operating the shop opens in a later step.</p>`:`<button class="btn btn-primary" data-act="rent" data-id="shoppex" data-n="${SIM.shopDays}" ${ok?'':'disabled'}>Lease unit</button>`}`;
-}
+  const end=shopLeaseEnd(), active=end>Date.now(), ok=BigInt(state.bal.bux)>=BigInt(SIM.shopRent)*UNIT, s=state;
+  const lease=`<ul class="checks"><li class="ok">Territory: Xetropolitan, where Plaxa exists</li><li class="${active||ok?'ok':'no'}">Rent: ${SIM.shopRent} BuX for ${SIM.shopDays} days${expTag}</li>
+    <li class="pending">Urban tax: applies to residents, rate TBD. ${s.homes.some(h=>h.region==='xetropolitan')?'You are a resident here.':'You are not a resident here.'}</li></ul>`;
+  const renew=`<button class="btn ${active?'btn-quiet':'btn-primary'}" data-act="rent" data-id="shoppex" data-n="${SIM.shopDays}" ${ok?'':'disabled'}>${s.rentals.some(r=>r.place==='shoppex')?`Renew lease (+${SIM.shopDays} days)`:'Lease unit'}</button>`;
+  if(!s.shop){
+    if(!active) return `<h2 class="act-h">Lease a Shoppex unit</h2><p class="meta">Urban property inside Plaxa. With a lease you can build a shopfront and sell what you produce to other citizens. ${esc(TERR.xetropolitan.tax.note)}</p>${lease}${renew}`;
+    const q=BigInt(s.bal.quarx||'0'), qn=BigInt(SIM.shopfrontQuarx)*UNIT;
+    return `<h2 class="act-h">Build your shopfront</h2><p class="meta">Your lease runs until ${fmtDate(end)}. A shopfront turns the unit into a shop of your own: it adds a merchant licence to your passport and a place in the Plaxa market.</p>
+      <ul class="checks"><li class="ok">Shoppex lease active</li><li class="${q>=qn?'ok':'no'}">${SIM.shopfrontQuarx} QuarX for the build (you hold ${fmtAmt(q)}). The QuarX is consumed for good.<span class="tag tag-prov">Provisional</span></li>
+      <li class="${social.db?'ok':'no'}">Shared world reachable, so other citizens can find you</li></ul>
+      ${social.db?`<div class="swap-row" style="max-width:26rem"><label class="meta" for="shop-name">Shop name</label><input class="input" id="shop-name" dir="auto" maxlength="32" placeholder="${esc(s.handle||'My')}'s goods"></div>
+      <button class="btn btn-primary" data-act="shop-build" ${q>=qn?'':'disabled'}>Build shopfront</button>${q<qn?` <a class="link" href="#/region/xalp">Mine QuarX in Xalp</a>`:''}`:shopsOffline()}<div id="law-out"></div>`; }
+  const pend=market.selling.filter(o=>o.status==='paid'), opts=MKT_ASSETS.map(a=>{ const n=listableUnits(s,a); return `<option value="${a}" ${n>0n?'':'disabled'}>${symOf(a)}: ${n} you can list</option>`; }).join('');
+  const rows=(s.listings||[]).map(l=>{ const left=listingLeft(s,l); return `<tr><td><b>${symOf(l.asset)}</b></td><td>${left} of ${l.qty}</td><td>${fmtAmt(BigInt(l.price))} BuX</td><td><button class="link link-muted" data-act="mkt-unlist" data-id="${esc(l.ref)}">Take down</button></td></tr>`; }).join('');
+  return `<div class="shop-head"><svg class="shop-mark" viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${active?'open':'locked'}"/></svg><div><h2 class="act-h" style="margin:0" dir="auto">${esc(s.shop.name)}</h2>
+      <p class="meta" style="margin:.2rem 0 0">${active?`Open in Plaxa until ${fmtDate(end)}`:'Closed: the Shoppex lease has ended. Renew it to open again.'}</p></div></div>
+    ${social.db?'':shopsOffline()}
+    <h3 style="margin:1.4rem 0 .5rem">On the shelves</h3>${rows?`<div class="tbl"><table><thead><tr><th>Goods</th><th>Left</th><th>Price each</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="meta">Nothing listed yet.</p>'}
+    ${active?`<div class="mkt-form"><div class="swap-row"><label class="meta" for="ml-asset">Goods</label><select class="input" id="ml-asset">${opts}</select></div>
+      <div class="swap-row"><label class="meta" for="ml-qty">Quantity</label><input class="input" id="ml-qty" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric"></div>
+      <div class="swap-row"><label class="meta" for="ml-price">Price each (BuX)</label><input class="input" id="ml-price" inputmode="decimal" placeholder="${SIM.rates.vegiex}"></div>
+      <button class="btn btn-primary" data-act="mkt-list" ${(s.listings||[]).length>=SIM.maxListings?'disabled':''}>List goods</button></div>
+      <p class="meta">You can sell only what you produced yourself, so shops stay with makers rather than middlemen. Listed goods are reserved until they sell or you take them down. ${SIM.marketFeeBps/100}% of each sale goes to the Xetropolitan treasury.<span class="tag tag-prov">Provisional</span></p>`:''}
+    <div id="law-out"></div>
+    <h3 style="margin:1.4rem 0 .5rem">Sales${pend.length?` <span class="tag tag-tbd">${pend.length} settling</span>`:''}</h3>${ordersTable(market.selling,'sell')}
+    <div style="margin-top:1.2rem;display:flex;gap:.6rem;flex-wrap:wrap">${renew}<a class="btn btn-quiet" href="#/place/plaxa">See the Plaxa market</a></div>`; }
+function actPlaxa(){
+  const g=presence('xetropolitan'); if(g) return g;
+  if(!social.db || !serverMode) return `<h2 class="act-h">The Plaxa market</h2>${shopsOffline()}`;
+  const now=Date.now(), shops=Object.entries(social.shops).filter(([id,sh])=>id!==social.me && sh && sh.openUntil>now && (sh.items||[]).some(it=>it.left>0)).sort((a,b)=>(b[1].at||0)-(a[1].at||0));
+  const card=([id,sh])=>`<div class="shop-card glass"><div class="shop-card-h"><b dir="auto">${esc(sh.name)}</b><span class="meta" dir="auto">by ${esc(sh.handle||'An Xlander')}</span></div>
+    <ul class="shelf">${(sh.items||[]).filter(it=>it.left>0&&MKT_ASSETS.includes(it.asset)).map(it=>`<li><span class="shelf-g"><b>${symOf(it.asset)}</b><span class="meta">${it.left} left · ${fmtAmt(BigInt(it.price))} BuX each</span></span>
+      <span class="shelf-buy"><input class="input" id="mq-${esc(it.ref)}" type="number" min="1" max="${it.left}" step="1" value="1" inputmode="numeric" aria-label="Quantity of ${symOf(it.asset)}"><button class="btn btn-primary" data-act="mkt-buy" data-seller="${esc(id)}" data-id="${esc(it.ref)}">Buy</button></span></li>`).join('')}</ul></div>`;
+  return `<h2 class="act-h">The Plaxa market</h2><p class="meta">Shops of real citizens. You pay into escrow; the merchant's shop delivers by itself while they have Xland open, and their BuX is released only on delivery. An order not filled within ${SIM.marketCancelHours} hours can be cancelled for a full refund.</p>
+    ${market.err?`<div class="lawcard"><b>Market unreachable</b><p>${esc(market.err)}</p></div>`:''}
+    <div class="shop-grid">${shops.length?shops.map(card).join(''):'<p class="meta">No shops are open right now. Lease a unit at Shoppex and be the first merchant.</p>'}</div>
+    <h3 style="margin:1.6rem 0 .5rem">Your orders</h3>${ordersTable(market.buying,'buy')}
+    <p style="margin-top:1rem"><a class="link" href="#/place/shoppex">${state.shop?'Manage your shop':'Open a shop of your own'}</a></p>`; }
+function worldMarketHTML(){ if(!world||!world.market) return ''; const m=world.market;
+  return `<div class="world-econ"><h3>The Plaxa market</h3><dl class="kv"><dt>Shopfronts built</dt><dd>${m.shopfronts.toLocaleString('en-US')}</dd><dt>QuarX consumed by shopfronts</dt><dd>${fmtU(m.quarxConsumed)} QuarX, out of circulation for good</dd><dt>Sales between citizens</dt><dd>${m.sales.toLocaleString('en-US')} worth ${fmtU(m.volume)} BuX</dd><dt>Fees to the Xetropolitan treasury</dt><dd>${fmtU(m.fees)} BuX (${m.feeBps/100}%)</dd></dl></div>`; }
 function floorText(price,years){ const b=parseAmt(String(price)); const y=Number(years); if(b===null||!(y>=0)) return 'Enter a price and a number of years.';
   const f=resaleFloor('tundrax',b,y*365.25*86400000); return `Minimum resale price: ${fmtAmt(f)} BuX (+${fmtAmt(f-b)} BuX protected).`; }
 function actTundrax(){
@@ -3304,14 +3451,14 @@ function parxListHTML(){ const ps=allPosts();
     return `<li class="${mine?'mine':''}"><div class="ppx-h"><b dir="auto">${esc(m.handle||'An Xlander')}</b>${m.region&&R[m.region]?`<span class="meta">${esc(R[m.region].name)}</span>`:''}<span class="meta">${new Date(m.at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div>
       <p dir="auto">${esc(m.text)}</p><div class="ppx-a">${mine?`<button class="link link-muted" data-act="ppx-del" data-id="${m.id}">Delete</button>`:`<button class="link link-muted" data-act="ppx-report" data-uid="${m.uid}" data-id="${m.id}">Report</button>`}${social.isOwner&&!mine?`<button class="link link-muted" data-act="ppx-remove" data-uid="${m.uid}" data-id="${m.id}">Remove (moderator)</button>`:''}${rc&&social.isOwner?`<span class="tag tag-tbd">${rc} report${rc>1?'s':''}</span>`:''}</div></li>`; }).join('')}</ol>`; }
 function citizenCardsHTML(){ const on=citizensOnline(), all=social.citizens.filter(c=>c.id!==social.me);
-  if(!all.length) return '<p class="meta">No other citizens yet. Share Xland with people you trust as Contributors.</p>';
-  return `<div class="ccards">${all.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0)).slice(0,24).map(c=>`<div class="ccard"><b dir="auto">${esc(citizenName(c))}</b>${c.title?`<span class="people" style="margin:0;font-size:.9rem">${esc(c.title)}</span>`:''}<span class="meta">${esc((LADDER.find(l=>l.id===c.identity)||{name:'Citizen'}).name)}${c.home&&R[c.home]?', home in '+esc(R[c.home].name):''}</span><span class="meta">${Date.now()-(c.lastSeen||0)<ONLINE_MS?`<b style="color:var(--cyan)">Here now</b>${c.region&&R[c.region]?' in '+esc(R[c.region].name):''}`:'Last seen '+fmtDate(c.lastSeen||0)}</span></div>`).join('')}</div>`; }
+  if(!all.length) return '<p class="meta">No other citizens yet. Invite people you trust to xland.world.</p>';
+  return `<div class="ccards">${all.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0)).slice(0,24).map(c=>`<div class="ccard"><b dir="auto">${esc(citizenName(c))}</b>${c.title?`<span class="people" style="margin:0;font-size:.9rem">${esc(c.title)}</span>`:''}<span class="meta">${esc((LADDER.find(l=>l.id===c.identity)||{name:'Citizen'}).name)}${c.home&&R[c.home]?', home in '+esc(R[c.home].name):''}</span>${c.shop?`<span class="meta">Merchant: <a class="link" href="#/place/plaxa" dir="auto">${esc(c.shop)}</a></span>`:''}<span class="meta">${Date.now()-(c.lastSeen||0)<ONLINE_MS?`<b style="color:var(--cyan)">Here now</b>${c.region&&R[c.region]?' in '+esc(R[c.region].name):''}`:'Last seen '+fmtDate(c.lastSeen||0)}</span></div>`).join('')}</div>`; }
 function actParx(){
   const g=presence('xetropolitan'); if(g) return g;
-  if(!social.db) return `<h2 class="act-h">The public square</h2><div class="lawcard"><b>Shared spaces are offline in this view</b><p>ParX connects real citizens through the shared Xland database. It works when Xland is opened in Claude by someone with Contributor access or above. In this view you can still use every other part of Xland.</p></div>`;
+  if(!social.db) return `<h2 class="act-h">The public square</h2><div class="lawcard"><b>Shared spaces are offline in this view</b><p>ParX connects real citizens through the shared world of xland.world, and it cannot be reached right now. Reload the page in a moment; everything else in Xland keeps working on this device.</p></div>`;
   return `<h2 class="act-h">The public square</h2><p class="meta">Conversation between real citizens of Xland. Speak as your passport name; your platform identity is never shown. ${citizensOnline().length} other citizen${citizensOnline().length===1?'':'s'} here now.</p>
     ${social.writable?`<div class="swap-row" style="max-width:none;margin-top:1rem"><label class="meta" for="ppx-text">Say something (up to 280 characters)</label><textarea class="input" id="ppx-text" dir="auto" maxlength="280" rows="3" style="resize:vertical"></textarea></div><button class="btn btn-primary" data-act="ppx-post">Speak in ParX</button>`
-      :`<div class="lawcard"><b>Read-only</b><p>Your access level lets you read the square but not speak. Ask the owner for Contributor access.</p></div>`}
+      :`<div class="lawcard"><b>Read-only</b><p>Your citizen key can read the square but cannot speak right now. Reload the page; if this stays, tell the founder through Feedback.</p></div>`}
     <div id="ppx-list" style="margin-top:1.4rem">${parxListHTML()}</div>
     <h3 style="margin:1.6rem 0 .6rem">Citizens</h3><div id="ppx-citizens">${citizenCardsHTML()}</div>
     <p class="meta faint" style="margin-top:1rem">Be kind. Reported messages are reviewed by the owner, who can remove them.</p>`;
@@ -3365,7 +3512,7 @@ function actAssemblyShared(){
   const types=PTYPES.concat(repealTypes(state)).filter(t=>t.handler!=='treasury.fundXcool' && !open.some(p=>p.type===t.id));
   return `<h2 class="act-h">The Xiberal Assembly</h2><p class="meta">Shared by every citizen of this Xland. ${n} eligible citizen${n===1?'':'s'}; a new proposal needs ${q} vote${q===1?'':'s'} (${GOVS.quorumPct}% of eligible citizens, fixed when published). Each citizen writes only their own proposals and ballots; every client computes the same tally.</p>
     <details class="gov-box"><summary><b>Your eligibility</b> (policy ${GOVS.policyVersion})</summary><ul class="checks">${caps.map(([c,ok,why])=>`<li class="${ok?'ok':'no'}"><code>${c}</code> ${esc(why)}</li>`).join('')}</ul><p class="meta">Deliberation ${GOVS.discussSecs/60} min, voting ${GOVS.votingSecs/3600} h, timelock ${GOVS.timelockSecs/60} min: simulation values. Identity claims are self-reported in this prototype; the server version verifies them.</p></details>
-    ${!social.writable?'<div class="lawcard"><b>Read-only</b><p>Your access level lets you read the Assembly but not publish or vote. Ask the owner for Contributor access.</p></div>':''}
+    ${!social.writable?'<div class="lawcard"><b>Read-only</b><p>Your citizen key can read the Assembly but cannot publish or vote right now. Reload the page; if this stays, tell the founder through Feedback.</p></div>':''}
     ${open.length?`<h3 style="margin:1.4rem 0 .4rem">Open proposals</h3><ol class="motions">${open.map(card).join('')}</ol>`:'<p class="meta" style="margin-top:1rem">No open proposals.</p>'}
     ${canDraft&&social.writable?(dr?`<div class="gov-box glass" style="margin-top:1.4rem"><span class="mstate">${dr.stage==='REVIEW'?'Review':'Draft'}</span><h3 style="margin:.4rem 0">${esc(ptypeOf(dr.type).title)}</h3>
         <dl class="kv"><dt>Current</dt><dd>${esc(HANDLERS[ptypeOf(dr.type).handler].current(state,ptypeOf(dr.type).arg))}</dd><dt>Proposed</dt><dd>${esc(HANDLERS[ptypeOf(dr.type).handler].proposed(state,ptypeOf(dr.type).arg))}</dd><dt>Authority</dt><dd>${esc(ptypeOf(dr.type).authority)}</dd></dl>
@@ -3413,7 +3560,7 @@ function activity(q){
   switch(q.id){
     case 'complex': return actAssembly();
     case 'fields': return actFields(); case 'quarx': return actQuarx(); case 'farmxswap': return actSwap('farmxswap'); case 'forgex': return actSwap('forgex');
-    case 'resort': return actResort(); case 'shoppex': return actShop(); case 'greenx': return actSwap('greenx'); case 'tundraxhomes': return actTundrax(); case 'commons': return actCommons(); case 'bazaar': return actBazaar(); case 'oracles': return actOracles();
+    case 'resort': return actResort(); case 'shoppex': return actShop(); case 'plaxa': return actPlaxa(); case 'greenx': return actSwap('greenx'); case 'tundraxhomes': return actTundrax(); case 'commons': return actCommons(); case 'bazaar': return actBazaar(); case 'oracles': return actOracles();
     case 'homax': return actHomax(); case 'civicsite': return actConstruct(); case 'xky': return actXky(); case 'hotex': case 'hotexx': return actHotex(q);
   }
   if(q.id==='parx') return actParx();
@@ -3651,9 +3798,30 @@ document.addEventListener('click', e=>{
       emit('VOTE_RECORDED',{proposal:id, choice:c}); emit('GOVERNANCE_ACTION_RECORDED',{action:'vote',proposal:id}); save(); render(); toast(`Vote recorded: ${c}.`); break; }
     case 'rent': { const pl=id, n=+b.dataset.n, region=PL[pl].region; if(!here(region)) return; const price=BigInt(pl==='resort'?n*SIM.resortNight:SIM.shopRent)*UNIT;
       const op=opId('rent-'+pl); if(!postLedger(state,op,[['bux',-price]],pl==='resort'?`Xalp lodge, ${n} night${n>1?'s':''} (tax-free)`:`Shoppex lease, ${SIM.shopDays} days`,pl)){ toast('Not enough BuX.'); return; }
-      const t=Date.now(); state.rentals.push({place:pl, start:t, end:t+n*86400000, op});
+      const t=Date.now(), from=pl==='shoppex'?Math.max(t,shopLeaseEnd()):t; state.rentals.push({place:pl, start:from, end:from+n*86400000, op});
       if(state.rentals.filter(r=>r.place===pl).length===1) chron('Rental', pl==='resort'?'First stay in Xalp':'First urban lease in Xetropolitan', pl==='resort'?`You rented a lodge for ${n} night${n>1?'s':''}.`:'You leased a Shoppex unit inside Plaxa.', region, 'ordinary');
-      save(); render(); toast('Rental confirmed.'); break; }
+      save(); render(); if(pl==='shoppex') publishShop(); toast(pl==='shoppex'&&state.shop?`Lease renewed until ${fmtDate(shopLeaseEnd())}.`:'Rental confirmed.'); break; }
+    case 'shop-build': { if(!here('xetropolitan')||!social.db) return; const inp=$('#shop-name'); const name=((inp&&inp.value)||'').trim()||`${state.handle||'An Xlander'}'s goods`;
+      const r=openShop(state,name); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot build yet</b><p>${esc(r.why)}</p></div>`; return; }
+      emit('SHOP_OPENED',{name}); chron('Market',`Shopfront opened: ${state.shop.name}`,`You built a shopfront in Plaxa, consuming ${SIM.shopfrontQuarx} QuarX. Your passport now carries a merchant licence.`,'xetropolitan','notable');
+      save(); render(); publishShop(); publishCitizen(); if(serverBE) serverBE.call('POST','/shop/open?name='+encodeURIComponent(state.shop.name)).then(refreshWorld).catch(()=>{});
+      toast(`${state.shop.name} is open. List what you produce.`); break; }
+    case 'mkt-list': { if(!here('xetropolitan')) return; const asset=($('#ml-asset')||{}).value, qty=Number(($('#ml-qty')||{}).value), price=parseAmt(($('#ml-price')||{}).value);
+      const r=listGoods(state,asset,qty,price===null?0n:price,opId('l')); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot list</b><p>${esc(r.why)}</p></div>`; return; }
+      save(); render(); publishShop(); toast(`Listed ${qty} ${symOf(asset)} in ${state.shop.name}.`); break; }
+    case 'mkt-unlist': { const pending=market.selling.some(o=>o.ref===id&&o.status==='paid'); const r=unlistGoods(state,id,pending);
+      if(!r.ok){ toast(r.why); if(pending) marketSync(); return; } save(); render(); publishShop(); toast('Taken down; the goods are back in your wallet.'); break; }
+    case 'mkt-buy': { if(!here('xetropolitan')||!serverBE) return; const seller=b.dataset.seller, sh=social.shops[seller], it=sh&&(sh.items||[]).find(x=>x.ref===id); if(!it||seller===social.me) return;
+      const inp=document.getElementById('mq-'+id), qty=Math.floor(Number(inp&&inp.value||1)); if(!(qty>=1&&qty<=it.left)){ toast(`Choose a quantity from 1 to ${it.left}.`); return; }
+      const total=BigInt(qty)*BigInt(it.price), oid=opId('o'); if(BigInt(state.bal.bux)<total){ toast('Not enough BuX.'); return; }
+      if(!marketPay(state,{oid,total:total.toString(),qty,asset:it.asset},sh.name)){ toast('Not enough BuX.'); return; } save(); b.disabled=true;
+      (async()=>{ try{ const r=await serverBE.call('POST',`/market/order?oid=${encodeURIComponent(oid)}&seller=${encodeURIComponent(seller)}&ref=${encodeURIComponent(id)}&qty=${qty}&price=${it.price}`);
+          market.buying.unshift(r.order); emit('ORDER_PLACED',{oid}); if(state.ledger.filter(e=>e.op.startsWith('mkt-pay-')).length===1) chron('Market','First order in Plaxa',`You ordered ${qty} ${symOf(it.asset)} from ${sh.name}.`,'xetropolitan','ordinary');
+          toast(`Ordered ${qty} ${symOf(it.asset)} from ${sh.name}. Your BuX waits in escrow until the shop delivers.`); }
+        catch(e){ marketRefund(state,{oid,total:total.toString(),status:'cancelled'}); toast(e.message||'The order did not go through. Your BuX is back.'); }
+        save(); render(); marketSync(); })(); break; }
+    case 'mkt-cancel': { if(!serverBE) return; (async()=>{ try{ const r=await serverBE.call('POST','/market/cancel?oid='+encodeURIComponent(id)); marketRefund(state,r.order); save(); toast('Order cancelled; your BuX is back.'); }
+        catch(e){ toast(e.message); } marketSync(); })(); break; }
     case 'tx-convert': { const r=evaluate('tundrax','convert',{ownsHome:false, ageOk:false, depositOk:BigInt(state.bal.bux)>=BigInt(TERR.tundrax.conversion.depositBuX)*UNIT});
       if(!r.ok){ if(!state.blocked.includes(r.key)) state.blocked.push(r.key); save(); const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Not eligible yet</b><p>${esc(r.law)}</p></div>`; } break; }
     case 'attend': { if(!here(id)||state.attended.includes(id)) return; state.attended.push(id); save(); render(); toast('You attended the Ixeland assembly.'); break; }
@@ -3751,6 +3919,8 @@ setInterval(()=>{
   [['plot','Harvest ready at the FarmX fields.'],['mine','QuarX ready to collect in Xalp.'],['construct','Construction complete in the Civic plaza.']].forEach(([k,msg])=>{
     const o=state[k]; if(o && Date.now()>=o.end && !state.notified[o.op]){ state.notified[o.op]=1; toast(msg); } });
 },1000);
+/* Test hook for the local test scripts only (test/*.cjs); absent on xland.world. */
+if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT };
 })();
 </script>
 </body>
