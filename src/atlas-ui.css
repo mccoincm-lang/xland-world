@@ -260,4 +260,4 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .pp-licence{display:flex;align-items:center;gap:.55rem;margin:.6rem 0 1.6rem;font-size:var(--small)}
 .pp-licence svg{width:30px;height:30px;flex:none;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.45))}
 .pp-licence b{font-variant:small-caps;letter-spacing:.04em;color:var(--gold)}
-@media (max-width:640px){ .tbl .upd{display:none} .ord{white-space:normal} }
+@media (max-width:640px){ .tbl .upd{display:none} .otbl th,.otbl td{padding:.55rem .45rem} .ord{font-variant:normal;letter-spacing:0;padding:0 .3rem;white-space:normal} }
