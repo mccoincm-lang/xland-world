@@ -2,7 +2,7 @@
 // Serves the Xland world and its shared multiplayer API, plus the waitlist.
 // Bindings: D1 database as `DB` (xland-waitlist). Secret `ADMIN_KEY`: the founder key (dashboard, moderation, CSV export).
 // Tables are created automatically on first use; schema.sql holds the same statements.
-import HTML from "./index.html";
+import HTML from "../dist/index.html";
 
 const SEC = {
   'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",

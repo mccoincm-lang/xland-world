@@ -1,0 +1,18 @@
+# Xland — xland.world (Cloudflare Worker)
+# Deployed by Cloudflare Workers Builds on every push to main (npx wrangler deploy).
+# The custom domain xland.world and the ADMIN_KEY secret are managed in the Cloudflare dashboard;
+# this file deliberately has no routes, so a deploy never changes them.
+name = "xland-world"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xland-waitlist"
+database_id = "05d46b41-131e-4b2d-84c9-34951b813d56"
