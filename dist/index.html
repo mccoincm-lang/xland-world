@@ -961,6 +961,11 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .pl.plot.shop{color:#FBE7B0;border-color:rgba(210,165,90,.55);background:rgba(26,18,5,.78)}
 .pl.plot.shop i{background:#D2A55A;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 6px rgba(251,231,176,.6)}
 
+/* ===== r50 Market news in ParX ===== */
+.news{padding:.9rem 1.1rem;margin-top:1.2rem}
+.news h3{font-family:var(--font-display);font-weight:400;font-size:1.2rem;margin:0 0 .4rem}
+.news li{padding:.25rem 0}
+
 </style>
 </head>
 <body>
@@ -1755,7 +1760,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r49';
+const BUILD = 'r50';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1796,7 +1801,7 @@ function myStructures(){ const out=[]; (state.rights||[]).filter(r=>r.status==='
 async function publishCitizen(){ if(!social.db || !social.me || !state.passport || !social.writable) return; const pv=state.privacy||{};
   const card={ v:1, handle: pv.name!=='private'?state.handle:'', title: pv.title!=='private'&&state.title&&ACH.find(a=>a.id===state.title)?ACH.find(a=>a.id===state.title).name:'',
     identity: state.identity, region: (pv.presence||'citizens')!=='private'?(state.currentRegion||null):null, home: pv.relations!=='private'&&state.homes[0]?state.homes[0].region:null,
-    structures: pv.relations!=='private'?myStructures():[], shop: state.shop?state.shop.name:null, lastSeen: Date.now() };
+    structures: pv.relations!=='private'?myStructures():[], shop: state.shop?state.shop.name:null, shopPlace: state.shop?(SHOP_TERR[shopT(state)].market||SHOP_TERR[shopT(state)].place):null, lastSeen: Date.now() };
   try{ await social.db.doc('citizens/'+social.me).set(card); }catch(e){ if(e&&e.code==='invalid_argument'){ social.writable=false; render(); } } }
 async function backfillClaims(){ if(!social.db || !social.writable || backfillClaims.done) return; backfillClaims.done=true;
   for(const r of (state.rights||[]).filter(x=>x.status==='active')){ if(social.claims[r.parcel]) continue; try{ await social.db.doc('claims/'+r.parcel).set({owner:social.me, handle:(state.privacy||{}).name!=='private'?state.handle:'', parcel:r.parcel, at:r.startAt}); }catch(e){} } }
@@ -3950,13 +3955,21 @@ function parxListHTML(){ const ps=allPosts();
       <p dir="auto">${esc(m.text)}</p><div class="ppx-a">${mine?`<button class="link link-muted" data-act="ppx-del" data-id="${m.id}">Delete</button>`:`<button class="link link-muted" data-act="ppx-report" data-uid="${m.uid}" data-id="${m.id}">Report</button>`}${social.isOwner&&!mine?`<button class="link link-muted" data-act="ppx-remove" data-uid="${m.uid}" data-id="${m.id}">Remove (moderator)</button>`:''}${rc&&social.isOwner?`<span class="tag tag-tbd">${rc} report${rc>1?'s':''}</span>`:''}</div></li>`; }).join('')}</ol>`; }
 function citizenCardsHTML(){ const on=citizensOnline(), all=social.citizens.filter(c=>c.id!==social.me);
   if(!all.length) return '<p class="meta">No other citizens yet. Invite people you trust to xland.world.</p>';
-  return `<div class="ccards">${all.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0)).slice(0,24).map(c=>`<div class="ccard"><b dir="auto">${esc(citizenName(c))}</b>${c.title?`<span class="people" style="margin:0;font-size:.9rem">${esc(c.title)}</span>`:''}<span class="meta">${esc((LADDER.find(l=>l.id===c.identity)||{name:'Citizen'}).name)}${c.home&&R[c.home]?', home in '+esc(R[c.home].name):''}</span>${c.shop?`<span class="meta">Merchant: <a class="link" href="#/place/plaxa" dir="auto">${esc(c.shop)}</a></span>`:''}<span class="meta">${Date.now()-(c.lastSeen||0)<ONLINE_MS?`<b style="color:var(--cyan)">Here now</b>${c.region&&R[c.region]?' in '+esc(R[c.region].name):''}`:'Last seen '+fmtDate(c.lastSeen||0)}</span></div>`).join('')}</div>`; }
+  return `<div class="ccards">${all.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0)).slice(0,24).map(c=>`<div class="ccard"><b dir="auto">${esc(citizenName(c))}</b>${c.title?`<span class="people" style="margin:0;font-size:.9rem">${esc(c.title)}</span>`:''}<span class="meta">${esc((LADDER.find(l=>l.id===c.identity)||{name:'Citizen'}).name)}${c.home&&R[c.home]?', home in '+esc(R[c.home].name):''}</span>${c.shop?`<span class="meta">Merchant: <a class="link" href="#/place/${esc(c.shopPlace||'plaxa')}" dir="auto">${esc(c.shop)}</a></span>`:''}<span class="meta">${Date.now()-(c.lastSeen||0)<ONLINE_MS?`<b style="color:var(--cyan)">Here now</b>${c.region&&R[c.region]?' in '+esc(R[c.region].name):''}`:'Last seen '+fmtDate(c.lastSeen||0)}</span></div>`).join('')}</div>`; }
+/* The square hears about new shops: the five most recently opened, each linked to its market. */
+function marketNewsHTML(){ const now=Date.now(), seen=new Set();
+  const list=Object.entries(social.shops||{}).filter(([id,sh])=>sh&&sh.openUntil>now&&SHOP_TERR[sh.t||'xetropolitan']).sort((a,b)=>(b[1].at||0)-(a[1].at||0))
+    .filter(([id,sh])=>{ const k=sh.coop?'c'+sh.coop:id; if(seen.has(k)) return false; seen.add(k); return true; }).slice(0,5);
+  if(!list.length) return '';
+  return `<div class="news glass"><h3>New in the markets</h3><ul class="plain">${list.map(([id,sh])=>{ const t=sh.t||'xetropolitan', c=SHOP_TERR[t], name=sh.coop&&market.coops[sh.coop]?market.coops[sh.coop].name:sh.name;
+    return `<li><a class="link" href="#/place/${c.market||c.place}" dir="auto"><b>${esc(name)}</b></a> <span class="meta">${esc((sh.kind||c.kind).toLowerCase())} in ${esc(R[t].name)}${sh.handle&&!sh.coop?` · ${esc(sh.handle)}`:''}</span></li>`; }).join('')}</ul></div>`; }
 function actParx(){
   const g=presence('xetropolitan'); if(g) return g;
   if(!social.db) return `<h2 class="act-h">The public square</h2><div class="lawcard"><b>Shared spaces are offline in this view</b><p>ParX connects real citizens through the shared world of xland.world, and it cannot be reached right now. Reload the page in a moment; everything else in Xland keeps working on this device.</p></div>`;
   return `<h2 class="act-h">The public square</h2><p class="meta">Conversation between real citizens of Xland. Speak as your passport name; your platform identity is never shown. ${citizensOnline().length} other citizen${citizensOnline().length===1?'':'s'} here now.</p>
     ${social.writable?`<div class="swap-row" style="max-width:none;margin-top:1rem"><label class="meta" for="ppx-text">Say something (up to 280 characters)</label><textarea class="input" id="ppx-text" dir="auto" maxlength="280" rows="3" style="resize:vertical"></textarea></div><button class="btn btn-primary" data-act="ppx-post">Speak in ParX</button>`
       :`<div class="lawcard"><b>Read-only</b><p>Your citizen key can read the square but cannot speak right now. Reload the page; if this stays, tell the founder through Feedback.</p></div>`}
+    ${marketNewsHTML()}
     <div id="ppx-list" style="margin-top:1.4rem">${parxListHTML()}</div>
     <h3 style="margin:1.6rem 0 .6rem">Citizens</h3><div id="ppx-citizens">${citizenCardsHTML()}</div>
     <p class="meta faint" style="margin-top:1rem">Be kind. Reported messages are reviewed by the owner, who can remove them.</p>`;

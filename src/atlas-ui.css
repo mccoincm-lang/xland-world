@@ -271,3 +271,8 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 /* ===== r48 Shops on the living map ===== */
 .pl.plot.shop{color:#FBE7B0;border-color:rgba(210,165,90,.55);background:rgba(26,18,5,.78)}
 .pl.plot.shop i{background:#D2A55A;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 6px rgba(251,231,176,.6)}
+
+/* ===== r50 Market news in ParX ===== */
+.news{padding:.9rem 1.1rem;margin-top:1.2rem}
+.news h3{font-family:var(--font-display);font-weight:400;font-size:1.2rem;margin:0 0 .4rem}
+.news li{padding:.25rem 0}
