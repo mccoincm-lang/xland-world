@@ -52,7 +52,8 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS xl_coops (id TEXT PRIMARY KEY, name TEXT NOT NULL, founder TEXT NOT NULL, territory TEXT NOT NULL, created INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS xl_coop_members (uid TEXT PRIMARY KEY, coop TEXT NOT NULL, joined INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS xl_coop_members_coop ON xl_coop_members (coop)",
-  "ALTER TABLE xl_shopfronts ADD COLUMN territory TEXT NOT NULL DEFAULT 'xetropolitan'"
+  "ALTER TABLE xl_shopfronts ADD COLUMN territory TEXT NOT NULL DEFAULT 'xetropolitan'",
+  "ALTER TABLE xl_orders ADD COLUMN meta TEXT"
 ];
 
 /* ---------------- World economy (server-authoritative) ----------------
@@ -74,7 +75,9 @@ const SHOPS = {
   xalp:         { quarx: 4, feeBps: 0,   assets: ['quarx'] },
   tundrax:      { quarx: 6, feeBps: 0,   assets: ['vegiex', 'livestox', 'quarx'], max: 50 },
   // Ixeland cooperatives: up to five members, each paying an equal share of 3 QuarX; open for sale from three members
-  ixeland:      { quarx: 3, feeBps: 100, assets: ['vegiex', 'livestox', 'quarx'], coop: { max: 5, openAt: 3 } }
+  ixeland:      { quarx: 3, feeBps: 100, assets: ['vegiex', 'livestox', 'quarx'], coop: { max: 5, openAt: 3 } },
+  // Xahara bazaar stalls: free; unique rare and digital assets, one at a time; resale of bought assets pays the anti-flip fee
+  xahara:       { quarx: 0, feeBps: 0,   assets: ['item'] }
 };
 const MARKET = { maxQty: 1000, maxOpenPerBuyer: 20, cancelAfterMs: 24 * 3600 * 1000 };
 /* Parcels no citizen can ever claim: the eternal House on the River (Aquax) and the locked reserves. */
@@ -99,7 +102,7 @@ async function worldReport(env, now){
       volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), shops: SHOPS }
   };
 }
-const orderOut = o => ({ oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
+const orderOut = o => ({ meta: o.meta ? JSON.parse(o.meta) : null, oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
 let schemaReady = false;
 async function ensureSchema(env){ if(schemaReady) return;
   for(const s of SCHEMA){ try { await env.DB.prepare(s).run(); } catch (e) { if(!s.startsWith('ALTER')) throw e; } }   // ALTER fails harmlessly once the column exists
@@ -245,6 +248,7 @@ async function api(req, env, url){
     if(!ID_RE.test(oid) || !ID_RE.test(seller) || !ID_RE.test(ref)) return fail(400, 'Invalid order.');
     if(seller === me.uid) return fail(403, 'You cannot buy from your own shop.');
     if(!Number.isInteger(qty) || qty < 1 || qty > MARKET.maxQty) return fail(400, 'Choose a whole quantity.');
+    let meta = null;
     const doc = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'shops' AND id = ?1").bind(seller).first();
     const shop = doc ? JSON.parse(doc.data) : null;
     if(!shop || !(Number(shop.openUntil) > now)) return fail(409, 'This shop is closed.');
@@ -260,12 +264,19 @@ async function api(req, env, url){
     if(unit !== price) return fail(409, 'The price has changed. Look again before buying.');
     const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM xl_orders WHERE buyer = ?1 AND status = 'paid'").bind(me.uid).first();
     if(open && Number(open.n) >= MARKET.maxOpenPerBuyer) return fail(429, 'You have too many orders waiting. Wait for merchants to fill them.');
-    const total = qty * unit, fee = Math.floor(total * cfg.feeBps / 10000);
+    let feeBps = cfg.feeBps;
+    if(item.asset === 'item'){
+      if(qty !== 1 || Number(item.qty) !== 1) return fail(400, 'A unique asset is sold one at a time.');
+      feeBps = Math.max(feeBps, Math.min(2000, Math.max(0, Math.floor(Number(item.feeBps) || 0))));   // anti-flip fee on resale
+      const link = typeof item.link === 'string' && /^https:\/\/[^\s"'<>]{4,300}$/.test(item.link) ? item.link : null;
+      meta = JSON.stringify({ title: String(item.title || 'A rare asset').slice(0, 60), kind: String(item.kind || 'Collectible').slice(0, 20), link });
+    }
+    const total = qty * unit, fee = Math.floor(total * feeBps / 10000);
     // One statement: the order is written only if the listing still has enough stock, so two buyers can never oversell it.
-    const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'paid', ?10, ?10
+    const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated, meta)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'paid', ?10, ?10, ?12
       WHERE (SELECT COALESCE(SUM(qty), 0) FROM xl_orders WHERE seller = ?3 AND ref = ?4 AND status IN ('paid', 'filled')) + ?6 <= ?11`)
-      .bind(oid, me.uid, seller, ref, item.asset, qty, unit, total, fee, now, Math.max(0, Math.floor(Number(item.qty) || 0))).run();
+      .bind(oid, me.uid, seller, ref, item.asset, qty, unit, total, fee, now, Math.max(0, Math.floor(Number(item.qty) || 0)), meta).run();
     if(!r.meta.changes){
       const dup = await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first();
       if(dup && dup.buyer === me.uid) return json({ok:true, order: orderOut(dup)});
