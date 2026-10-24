@@ -9,6 +9,7 @@ const api = async (key, method, path, body) => { const r = await fetch(base + "a
 const hash = async (p, h, ms = 900) => { await p.evaluate((x) => (location.hash = x), h); await p.waitForTimeout(ms); };
 const tap = async (p, sel) => p.evaluate((s) => { const el = document.querySelector(s); if (el) el.click(); return !!el; }, sel);
 const visit = async (p, t) => { await hash(p, "#/region/" + t); await tap(p, `[data-act="visit"][data-id="${t}"]`); await p.waitForTimeout(500); };
+const shot = async (p, path) => { try { await p.screenshot({ path, timeout: 30000 }); } catch (e) { console.log("(screenshot skipped:", path.split("/").pop() + ")"); } };   // phone WebGL screenshots can be slow on the test machine
 const toastOf = (p) => p.evaluate(() => (document.querySelector("#toast") || {}).textContent);
 const lawOut = (p) => p.evaluate(() => ((document.querySelector("#law-out") || {}).innerText || "").replace(/\s+/g, " "));
 const wallet = (p) => p.evaluate(() => { const x = window.__xl, s = x.state; return { bux: x.fmtAmt(s.bal.bux), vegiex: x.fmtAmt(s.bal.vegiex), quarx: x.fmtAmt(s.bal.quarx), ok: x.reconcile(s) }; });
@@ -26,7 +27,7 @@ async function citizen(b, name, vp) {
 (async () => {
   const b = await chromium.launch({ executablePath: "/opt/google/chrome/chrome", args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const a = await citizen(b, "Mahan", { width: 1440, height: 900 });
-  await a.evaluate(() => { const x = window.__xl; x.postLedger(x.state, "mine-t2", [["quarx", 4n * x.UNIT]], "test seam"); x.postLedger(x.state, "prod-t2", [["vegiex", 10n * x.UNIT]], "test harvest"); x.save(); });
+  await a.evaluate(async () => { await window.__xl.devCredit("quarx", 4); await window.__xl.devCredit("vegiex", 10); });   // as if mined and harvested
   await visit(a, "farmx"); await hash(a, "#/place/farmxswap", 2500);
   await a.screenshot({ path: `${out}/tr-a-farm-build.png`, fullPage: true });
   await a.fill("#shop-name", "Mahan's Field"); await tap(a, '[data-act="shop-build"][data-id="farmx"]'); await a.waitForTimeout(1500);
@@ -42,17 +43,17 @@ async function citizen(b, name, vp) {
   const bb = await citizen(b, "Nika", { width: 390, height: 844 });
   await visit(bb, "xetropolitan"); await hash(bb, "#/place/plaxa", 4000);
   console.log("B in Plaxa sees farm stand?", await bb.evaluate(() => document.querySelector("#activity").innerText.includes("Mahan's Field")));
-  await bb.screenshot({ path: `${out}/tr-b-plaxa.png`, fullPage: true });
+  await shot(bb, `${out}/tr-b-plaxa.png`);
   await visit(bb, "farmx"); await hash(bb, "#/place/farmxswap", 4000);
   const ref = await a.evaluate(() => window.__xl.state.listings[0].ref);
   await bb.fill(`#mq-${ref}`, "2"); await tap(bb, `[data-act="mkt-buy"][data-id="${ref}"]`); await bb.waitForTimeout(2000);
   console.log("B ordered at FarmXSwap:", await toastOf(bb));
-  await bb.screenshot({ path: `${out}/tr-b-farm.png`, fullPage: true });
+  await shot(bb, `${out}/tr-b-farm.png`);
   for (let i = 0; i < 8; i++) { await a.waitForTimeout(3000); if (await a.evaluate(() => window.__xl.state.ledger.some((e) => e.op.startsWith("mkt-sale-")))) break; }
   console.log("A after sale (fee 1% to the FarmX treasury):", await wallet(a), await a.evaluate(() => window.__xl.state.ledger.filter((e) => e.op.startsWith("mkt-fee-")).map((e) => e.to + " " + e.qty)));
   for (let i = 0; i < 8; i++) { await bb.waitForTimeout(3000); if (await bb.evaluate(() => window.__xl.state.ledger.some((e) => e.op.startsWith("mkt-recv-")))) break; }
   console.log("B after delivery:", await wallet(bb));
-  await hash(bb, "#/region/xetropolitan", 2500); await bb.screenshot({ path: `${out}/tr-b-region.png`, fullPage: true });
+  await hash(bb, "#/region/xetropolitan", 2500); await shot(bb, `${out}/tr-b-region.png`);
   await hash(a, "#/region/xasteland", 2500); console.log("Xasteland:", await a.evaluate(() => (document.querySelector(".pop-card") || {}).innerText));
   await hash(a, "#/region/aquax", 2500); console.log("Aquax:", await a.evaluate(() => (document.querySelector(".pop-card") || {}).innerText));
   await hash(a, "#/economy", 3000); await a.evaluate(() => { const h = [...document.querySelectorAll("h2")].find((x) => /21,000,000/.test(x.textContent)); h && h.scrollIntoView(); }); await a.waitForTimeout(800); await a.screenshot({ path: `${out}/tr-a-economy.png` });

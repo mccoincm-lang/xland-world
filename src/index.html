@@ -1387,10 +1387,11 @@ const LS_KEY = 'xland.proto.v1';
 function fresh(){ return {v:2, passport:false, identity:'visitor', passportId:null, handle:'', paths:[], affinity:null, currentRegion:null,
   visited:[], inspected:[], read:[], discovered:[], quests:{}, chronicle:[], createdAt:null, updatedAt:0,
   bal:{bux:'0',lex:'0',vegiex:'0',livestox:'0',quarx:'0'}, locked:{bux:'0',lex:'0',vegiex:'0',livestox:'0',quarx:'0'}, ledger:[],
-  laws:[], govDraft:null, emergency:null, programs:{}, resale:{}, plot:null, plotOwn:null, mine:null, mineLog:[], proposals:[], rights:[], projects:[], buildings:[], parcelFocus:null, rentals:[], shop:null, listings:[], items:[], rareBought:{}, events:[], placeVisits:[], services:{}, worldEvents:[], eventDay:null, eventCooldown:{}, mstate:{}, branches:{}, dyn:[], transitions:[], privacy:{name:'public', title:'public', relations:'citizens', chronicle:'private'}, demand:{}, quotedVenues:{}, fedCity:false, ach:[], title:null, lastSeen:0, search:null, searchLog:[], attended:[], homes:[], listing:null, construct:null, builds:[], blocked:[], notified:{}}; }
+  laws:[], govDraft:null, emergency:null, programs:{}, resale:{}, plot:null, plotOwn:null, mine:null, mineLog:[], proposals:[], rights:[], projects:[], buildings:[], parcelFocus:null, rentals:[], shop:null, listings:[], walletV:1, outbox:[], walletLog:[], walletAt:0, items:[], rareBought:{}, events:[], placeVisits:[], services:{}, worldEvents:[], eventDay:null, eventCooldown:{}, mstate:{}, branches:{}, dyn:[], transitions:[], privacy:{name:'public', title:'public', relations:'citizens', chronicle:'private'}, demand:{}, quotedVenues:{}, fedCity:false, ach:[], title:null, lastSeen:0, search:null, searchLog:[], attended:[], homes:[], listing:null, construct:null, builds:[], blocked:[], notified:{}}; }
 function newPassportId(){ return 'XL-'+Date.now().toString(36).toUpperCase().slice(-5)+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }
 function migrate(s){ s = s ? JSON.parse(JSON.stringify(s)) : s; /* snapshots from the shared database are frozen: always work on a mutable deep copy */ const f=fresh(); const o=Object.assign(f, s||{}); o.bal=Object.assign(fresh().bal, o.bal||{});
   delete o.xp; delete o.rep; delete o.titles;
+  if(s && s.passport && s.walletV===undefined) o.walletV=0;   // balances from before the server wallet: carried over once
   if(o.passport){ if(!o.identity||o.identity==='visitor') o.identity='guest'; if(!o.passportId) o.passportId=newPassportId();
     if(!o.ledger.some(e=>e.op==='sandbox-grant')) grantSandbox(o); }
   Object.keys(o.quests).forEach(k=>{ if(o.quests[k]==='claimed') o.quests[k]='recorded'; });
@@ -1428,6 +1429,7 @@ function postLedger(st, op, lines, reason, ref){
     st.ledger.push({op, event:m[1], asset:a, delta:d.toString(), qty:(d<0n?-d:d).toString(), from:d<0n?'player':c, to:d<0n?c:'player', territory:m[2], actor:'player', reason, ref:ref||null, cfg:ECON_VERSION, at}); }
   const ev={PRODUCTION:op.startsWith('mine-')?'EXTRACTION_COMPLETED':'PRODUCTION_COMPLETED', SWAP:'TRADE_SETTLED', MARKET:'TRADE_SETTLED', PROPERTY_SALE:'PROPERTY_ACQUIRED'}[m[1]] || (op.startsWith('rent-')?'USE_RIGHT_CHANGED':op.startsWith('rare-')?'PROPERTY_ACQUIRED':null);
   if(ev && st.passport) emitTo(st,ev,{op,territory:m[2]}); if(lines.some(l=>String(l[2]||'').startsWith('logistics'))&&l0(lines)) emitTo(st,'LOGISTICS_CHARGED',{op});
+  if(st===state) outboxPush({op, kind:'post', lines:lines.filter(l=>l[1]!==0n).map(l=>[l[0], l[1].toString()])});
   return true;
 }
 /* Locks move value between available and locked; consumption leaves the locked state. Locks are never burns. */
@@ -1440,8 +1442,44 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
   st.bal[asset]=(av+dAv).toString(); st.locked[asset]=(lk+dLk).toString();
   emitTo(st,op.startsWith('mkt-')?{LOCK:'GOODS_LISTED',UNLOCK:'GOODS_UNLISTED',CONSUME:'GOODS_DELIVERED'}[kind]:{LOCK:'BUILD_RESERVED',UNLOCK:'BUILD_FAILED',CONSUME:'BUILD_COMMITTED'}[kind],{op});
   st.ledger.push({op, event:kind, asset, delta:dAv.toString(), lockDelta:dLk.toString(), qty:qty.toString(), from, to, territory:opMeta(op)[2], actor:'player', reason, ref:ref||null, cfg:ECON_VERSION, at:Date.now()});
+  if(st===state) outboxPush({op, kind:'lock', lk:kind, asset, qty:qty.toString()});
   return true;
 }
+/* ---- The server holds the official wallet (r52) ----
+   Every operation this page performs is also proposed to the server, in order, through an outbox kept with the state.
+   The server applies only valid operations. When the outbox is empty and the page has mirrored everything the server
+   did (seams, harvests, market settlements), the page aligns its balances with the server's, recording any difference
+   as an adjustment so the ledger still adds up. */
+const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-'];
+function outboxPush(body){ if(!state.passport || SERVER_CREDITED.some(p=>body.op.startsWith(p))) return; state.outbox=state.outbox||[]; state.outbox.push(body); clearTimeout(outboxPush.t); outboxPush.t=setTimeout(()=>walletSync(), 1200); }
+function adjustToServer(st, srv){ let ch=false;
+  ASSETS.forEach(a=>{ const sa=BigInt(srv.bal[a.id]||'0'), sl=BigInt(srv.locked[a.id]||'0'), la=BigInt(st.bal[a.id]||'0'), ll=BigInt((st.locked||{})[a.id]||'0');
+    if(sa===la && sl===ll) return; const d=sa-la;
+    st.bal[a.id]=sa.toString(); st.locked=st.locked||{}; st.locked[a.id]=sl.toString(); ch=true;
+    st.ledger.push({op:'srv-adjust-'+Date.now().toString(36)+'-'+a.id, event:'ADJUSTMENT', asset:a.id, delta:d.toString(), lockDelta:(sl-ll).toString(), qty:(d<0n?-d:d).toString(), from:'server:wallet', to:'player', territory:null, actor:'system', authority:'server', reason:'Aligned with the official wallet kept by the server', cfg:ECON_VERSION, at:Date.now()}); });
+  return ch; }
+const wallet = { busy:false, err:'', at:0 };
+/* An alpha citizen's balances are carried over before anything the server credits (a seam, a harvest) starts the wallet. */
+async function walletReady(){ for(let i=0; i<20 && state.passport && !state.walletV; i++){ await walletSync(); if(state.walletV) break; await new Promise(r=>setTimeout(r,500)); } }
+async function walletSync(){ if(!serverBE || !state.passport || wallet.busy) return; wallet.busy=true; let changed=false;
+  try{
+    let w=await serverBE.call('GET','/wallet');
+    if(!w.exists && !state.walletV){   // first visit after the server wallet: carry the alpha balances over once
+      try{ await serverBE.call('POST','/wallet/import',{legacy:true, bal:state.bal, locked:state.locked||{}}); }catch(e){}
+      state.walletV=1; state.outbox=[]; changed=true; w=await serverBE.call('GET','/wallet'); }
+    else if(!state.walletV){ state.walletV=1; state.outbox=[]; changed=true; }
+    while((state.outbox||[]).length){ const body=state.outbox[0];
+      try{ await serverBE.call('POST','/ledger',body); }
+      catch(e){ if(e.status!==422 && e.status!==400) throw e; (state.walletLog=state.walletLog||[]).push({op:body.op, why:e.message, at:Date.now()}); if(state.walletLog.length>50) state.walletLog.splice(0,state.walletLog.length-50); }
+      state.outbox.shift(); changed=true; }
+    w=await serverBE.call('GET','/wallet');
+    // Wait for market settlements this page has not mirrored yet (they arrive with the next market sync); align otherwise.
+    const local=new Set(state.ledger.map(e=>e.op)), pending=(w.recent||[]).filter(([op,at])=>!local.has(op) && op.startsWith('mkt-') && w.now-at<120000);
+    if(!pending.length && !(state.outbox||[]).length && adjustToServer(state,w)) changed=true;
+    if(pending.length) marketSync();
+    wallet.err=''; wallet.at=Date.now(); state.walletAt=wallet.at;
+  }catch(e){ wallet.err=e.message||'The server wallet cannot be reached right now.'; }
+  wallet.busy=false; if(changed){ save(); const {route}=parse(); if(route==='wallet') render(); } }
 /* Movements between public accounts (escrow, treasury, burn) that do not touch the player's wallet. */
 function systemMove(st, op, event, asset, qty, from, to, reason, authority){
   if(qty<=0n || st.ledger.some(e=>e.op===op)) return false;
@@ -1482,7 +1520,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r51';
+const BUILD = 'r52';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1633,6 +1671,7 @@ async function connect(){
       if(adopt || (rs.updatedAt||0) >= (state.updatedAt||0)){ state = rs; try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){} render(); }
       else save();
     } else if(state.passport){ save(); }
+    if(serverMode){ setTimeout(walletSync, 400); setInterval(walletSync, 30000); }
   }catch(e){ remote=null; }
 }
 
@@ -2915,6 +2954,7 @@ function viewWallet(){
   const rows=[...state.ledger].reverse();
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Wallet</h1><p class="lede">Your balances inside Xland. Every amount here is an internal simulation, and every change is written to an append-only ledger. <a class="link" href="#/economy">Open the civilization ledger</a></p></div><span class="sim-badge">Simulation</span></div>
+    ${serverMode?`<div class="wallet-status glass"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${wallet.err?'restricted':'open'}"/></svg><p class="meta" style="margin:0"><b>Official balances kept by xland.world.</b> ${wallet.err?esc(wallet.err):state.walletAt?`Checked ${new Date(state.walletAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}${(state.outbox||[]).length?`, ${state.outbox.length} change${state.outbox.length>1?'s':''} on the way`:''}.`:'Connecting…'}${(state.walletLog||[]).length?` ${state.walletLog.length} change${state.walletLog.length>1?'s were':' was'} not accepted by the server; the wallet follows the server.`:''}</p></div>`:''}
     <div class="assets">${ASSETS.map(a=>`<div class="asset glass"><div class="asset-head"><b>${a.sym}</b><span class="meta">${esc(a.type)}, ${esc(a.domain)}</span></div>
       <div class="asset-amt">${fmtAmt(state.bal[a.id]||'0')}</div>${provenance(a.id)}${BigInt(state.locked[a.id]||'0')>0n?`<p class="meta">Locked: ${fmtAmt(state.locked[a.id])} ${a.sym}</p>`:''}<p class="meta">${esc(a.use)}</p><p class="asset-how">${esc(a.how)}</p></div>`).join('')}</div>
     ${state.items.length?`<h2 class="display" style="font-size:1.7rem;margin:3rem 0 1rem">Rare assets</h2><ul class="plain">${state.items.map(i=>`<li><b>${esc(i.name)}</b> <span class="meta">${esc(i.from)}, ${fmtDate(i.at)}</span></li>`).join('')}</ul><p class="meta faint">Final NFT classes and rarity names are TBD in the canon.</p>`:''}
@@ -3059,12 +3099,20 @@ async function sendFeedback(){ const text=(($('#fb-text')||{}).value||'').trim()
   else toast('Saved on this device. It will reach the founder when the shared world is reachable again.');
   save(); $('#fb').hidden=true; $('#fb').innerHTML=''; }
 const FUNNEL=[['passport','Passport inscribed'],['visited','Entered a territory'],['harvest','First harvest'],['trade','First trade'],['quarx','First QuarX'],['parcel','First parcel'],['home','Residence'],['build','Built something'],['vote','Voted'],['parx','Spoke in ParX'],['shop','Opened a shop'],['sale','Sold to a citizen'],['bought','Bought from a citizen'],['mission','Completed a mission'],['firstSteps','Finished first steps']];
+/* The founder sees how the server wallets are doing: how many exist, how many alpha wallets were carried over,
+   and every operation the server refused (a forgery, or a rule the server does not know yet). */
+let founderWallets=null;
+function founderWalletsHTML(){ if(!founderWallets || Date.now()-founderWallets.at>30000){ const at=Date.now(); founderWallets=Object.assign(founderWallets||{},{at}); serverBE.call('GET','/admin/wallets').then(j=>{ founderWallets=Object.assign(j,{at:Date.now()}); if(parse().route==='founder') render(); }).catch(()=>{}); }
+  const w=founderWallets; if(!w || w.wallets==null) return '';
+  return `<h2 class="display eh">Server wallets</h2><dl class="kv"><dt>Wallets held by the server</dt><dd>${w.wallets}</dd><dt>Alpha wallets carried over</dt><dd>${w.imported}</dd><dt>Refused operations</dt><dd>${w.rejects.length}${w.rejects.length===30?'+':''}</dd></dl>
+    ${w.rejects.length?`<div class="tbl"><table><thead><tr><th>When</th><th>Citizen</th><th>Operation</th><th>Why</th></tr></thead><tbody>${w.rejects.map(r=>`<tr><td class="meta">${fmtDate(r.at)}</td><td><code>${esc(r.uid)}</code></td><td><code>${esc(r.op)}</code></td><td>${esc(r.why)}</td></tr>`).join('')}</tbody></table></div>`:''}`; }
 function viewFounder(){
   if(!social.isOwner) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.2rem">Founder dashboard</h1><p class="lede">Only the owner of this Xland can see the dashboard.</p>${serverMode?`<div class="swap-row" style="margin:1.2rem auto 0;max-width:26rem;text-align:left"><label class="meta" for="admin-in">Founder key</label><div style="display:flex;gap:.6rem"><input class="input" id="admin-in" type="password" autocomplete="off" style="flex:1;min-width:0"><button class="btn btn-primary" data-act="admin-use">Unlock</button></div></div>`:''}</div></section>`;
   const P=social.progress||[], F=social.feedback||[], n=P.length, day=Date.now()-86400000, active=P.filter(x=>x.updatedAt>day).length, avg=F.filter(f=>f.rating).reduce((a,f)=>a+f.rating,0)/(F.filter(f=>f.rating).length||1);
   return `<section class="page fade-in"><div class="page-head"><div><h1 class="display">Founder dashboard</h1><p class="lede">How real testers move through Xland, and what they tell you. Visible only to you.</p></div><span class="sim-badge">Alpha ${BUILD}</span></div>
     <dl class="kv"><dt>Testers</dt><dd>${n}</dd><dt>Active in the last day</dt><dd>${active}</dd><dt>Feedback</dt><dd>${F.length}${F.some(f=>f.rating)?` · average rating ${avg.toFixed(1)} of 5`:''}</dd></dl>
     ${serverMode?`<h2 class="display eh">The world</h2><div class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
+    ${serverMode?founderWalletsHTML():''}
     <h2 class="display eh">Journey funnel</h2><div class="funnel">${FUNNEL.map(([k,l])=>{ const c=P.filter(x=>x.milestones&&x.milestones[k]).length, pct=n?Math.round(c/n*100):0; return `<div class="fn-row"><span>${l}</span><i><b style="width:${pct}%"></b></i><em>${c} · ${pct}%</em></div>`; }).join('')}</div>
     <h2 class="display eh">Feedback</h2>${F.length?`<ol class="ppx">${F.slice(0,60).map(f=>`<li><div class="ppx-h"><b dir="auto">${esc(f.handle||'A tester')}</b>${f.rating?`<span class="meta">${'◆'.repeat(f.rating)}${'◇'.repeat(5-f.rating)}</span>`:''}<span class="meta">${esc(f.route)} · ${esc(f.identity||'')} · ${esc(f.build||'')} · ${new Date(f.at).toLocaleString()}</span></div><p dir="auto">${esc(f.text)}</p></li>`).join('')}</ol>`:'<p class="meta">No feedback yet.</p>'}
     <h2 class="display eh">Testers</h2><div class="tbl"><table><thead><tr><th>Tester</th><th>State</th><th>Steps</th><th>Last seen</th><th>Where</th></tr></thead><tbody>${P.sort((a,b)=>b.updatedAt-a.updatedAt).map(x=>`<tr><td dir="auto">${esc(x.handle||'A tester')}</td><td>${esc(x.identity||'')}</td><td>${x.milestones?Object.values(x.milestones).filter(Boolean).length:0} of ${FUNNEL.length}</td><td>${fmtDate(x.updatedAt)}</td><td>${esc(x.route||'')}</td></tr>`).join('')||'<tr><td colspan="5" class="meta">No testers yet.</td></tr>'}</tbody></table></div>
@@ -3921,8 +3969,20 @@ document.addEventListener('click', e=>{
       grantSandbox(state); if(serverMode && serverBE) serverBE.call('POST','/bux/sandbox').catch(()=>{});
       state.guide={min:false}; save(); hx={step:0,handle:'',paths:[],affinity:''}; location.hash='#/world'; toast('Passport inscribed. You are now a Hotex Guest.'); break;
     case 'travel': { const r=R[id], el=eligibility(r); if(!el.can){ toast(el.text); return; } visit(id); break; }
-    case 'prod-start': { if(!here('farmx')||state.plot) return; const f=SIM.farm[id]; const t=Date.now(); state.plot={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); toast(`${f.label}: started.`); break; }
-    case 'prod-claim': { const p=state.plot; if(!p||Date.now()<p.end) return; const f=Object.assign({},SIM.farm[p.kind],{out:p.out||SIM.farm[p.kind].out});
+    case 'prod-start': case 'prod-start-own': if(serverMode && serverBE){ const own=act==='prod-start-own', f=SIM.farm[id]; if(!here('farmx')||(own?state.plotOwn:state.plot)||!f) return; if(own && !state.buildings.some(b=>b.def==='farmstead')) return;
+        b.disabled=true; (async()=>{ try{ const j=await serverBE.call('POST',`/farm/start?slot=${own?'own':'field'}&kind=${id}&mult=${Math.min(1,evMod('yieldMult',1))}`), off=Date.now()-j.now;
+            state[own?'plotOwn':'plot']={kind:j.kind,start:j.start+off,end:j.end+off,op:j.op,out:j.out,server:true}; save(); render(); toast(`${f.label}: started.`); }
+          catch(e){ toast(e.message); render(); } })(); break; }
+      if(act==='prod-start-own'){ if(!here('farmx')||state.plotOwn||!state.buildings.some(b=>b.def==='farmstead')) return; const f=SIM.farm[id]; const t=Date.now(); state.plotOwn={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-own-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); break; }
+      { if(!here('farmx')||state.plot) return; const f=SIM.farm[id]; const t=Date.now(); state.plot={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); toast(`${f.label}: started.`); break; }
+    case 'prod-claim': case 'prod-claim-own': if((act==='prod-claim'?state.plot:state.plotOwn)&&(act==='prod-claim'?state.plot:state.plotOwn).server&&serverBE){ const own=act==='prod-claim-own', p=own?state.plotOwn:state.plot; if(Date.now()<p.end) return;
+        b.disabled=true; (async()=>{ await walletReady(); let j; try{ j=await serverBE.call('POST',`/farm/claim?slot=${own?'own':'field'}`); }catch(e){ if(e.status===404){ state[own?'plotOwn':'plot']=null; save(); } toast(e.message); render(); return; }
+          const first=!state.ledger.some(e=>e.op.startsWith('prod-'));
+          if(postLedger(state,j.op,[[j.kind,BigInt(j.out)*UNIT]],own?`Harvest on your farmstead plot: ${j.out} ${AS[j.kind].sym}`:`Harvest at the FarmX fields: ${j.out} ${AS[j.kind].sym}`,'fields') && first && !own)
+            chron('FirstHarvest','First harvest in FarmX',`You harvested ${j.out} ${AS[j.kind].sym} at the FarmX fields.`,'farmx','notable');
+          state[own?'plotOwn':'plot']=null; save(); render(); toast(`Harvested ${j.out} ${AS[j.kind].sym}.`); walletSync(); })(); break; }
+      if(act==='prod-claim-own'){ const p=state.plotOwn; if(!p||Date.now()<p.end) return; postLedger(state,p.op,[[p.kind,BigInt(p.out)*UNIT]],`Harvest on your farmstead plot: ${p.out} ${AS[p.kind].sym}`,'fields'); state.plotOwn=null; save(); render(); toast(`Harvested ${p.out} ${AS[p.kind].sym}.`); break; }
+      { const p=state.plot; if(!p||Date.now()<p.end) return; const f=Object.assign({},SIM.farm[p.kind],{out:p.out||SIM.farm[p.kind].out});
       const first=!state.ledger.some(e=>e.op.startsWith('prod-'));
       if(postLedger(state,p.op,[[p.kind,BigInt(f.out)*UNIT]],`Harvest at the FarmX fields: ${f.out} ${AS[p.kind].sym}`,'fields')){
         if(first) chron('FirstHarvest','First harvest in FarmX',`You harvested ${f.out} ${AS[p.kind].sym} at the FarmX fields.`,'farmx','notable'); }
@@ -3932,7 +3992,7 @@ document.addEventListener('click', e=>{
       { if(!here('xalp')||state.mine||minedToday()>=quarxCap()) return; const t=Date.now(), secs=Math.round((season().id==='cold'?SIM.coldSeasonSeamMult:1)*(SIM.quarx.minSecs+Math.floor(Math.random()*(SIM.quarx.maxSecs-SIM.quarx.minSecs+1)))*evMod('seamMult',1));
       state.mine={start:t,end:t+secs*1000,op:opId('mine')}; save(); render(); toast('Extraction started.'); break; }
     case 'mine-claim': if(state.mine && state.mine.server && serverBE){ const m=state.mine; if(Date.now()<m.end) return;
-        (async()=>{ let j; try{ j=await serverBE.call('POST','/quarx/claim'); }catch(err){ if(err.status===404){ state.mine=null; save(); render(); } toast(err.message); return; }
+        (async()=>{ await walletReady(); let j; try{ j=await serverBE.call('POST','/quarx/claim?op='+encodeURIComponent(m.op)); }catch(err){ if(err.status===404){ state.mine=null; save(); render(); } toast(err.message); return; }
           const first=!state.ledger.some(e=>e.op.startsWith('mine-')), amt=BigInt(j.reward);
           if(postLedger(state,m.op,[['quarx',amt]],`QuarX extracted in Xalp: ${fmtAmt(amt)} QuarX (world ledger)`,'quarx')){ state.mineLog.push(Date.now());
             if(first) chron('FirstQuarX','First QuarX extracted','You worked a seam in Xalp and extracted QuarX, the substance of construction.','xalp','notable'); }
@@ -3984,8 +4044,6 @@ document.addEventListener('click', e=>{
     case 'proj-done': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.status!=='active'||Date.now()<pr.end) return; projectCommit(state,pr);
       pr.status='complete'; state.buildings.push({id:'bld-'+pr.parcel, def:pr.def, parcel:pr.parcel, at:Date.now(), version:BUILDING_DEFS[pr.def].version});
       emit('BUILD_COMPLETED',{parcel:pr.parcel}); chron('BuildingCompleted',`Farmstead raised on ${pr.parcel}`,'A new productive building stands in FarmX. It opens your own plot at the fields.','farmx','notable'); save(); render(); toast('Farmstead complete. Your own plot is open.'); break; }
-    case 'prod-start-own': { if(!here('farmx')||state.plotOwn||!state.buildings.some(b=>b.def==='farmstead')) return; const f=SIM.farm[id]; const t=Date.now(); state.plotOwn={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-own-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); break; }
-    case 'prod-claim-own': { const p=state.plotOwn; if(!p||Date.now()<p.end) return; postLedger(state,p.op,[[p.kind,BigInt(p.out)*UNIT]],`Harvest on your farmstead plot: ${p.out} ${AS[p.kind].sym}`,'fields'); state.plotOwn=null; save(); render(); toast(`Harvested ${p.out} ${AS[p.kind].sym}.`); break; }
     case 'homax-buy': { if(!here('ximberland')||state.homes.length) return; const price=BigInt(SIM.homaxPrice)*UNIT;
       if(!postLedger(state,'homax-acquire',[['bux',-price]],'Homax acquired in Ximberland','homax')){ toast('Not enough BuX.'); return; }
       state.homes.push({id:'homax-1', region:'ximberland', basis:price.toString(), at:Date.now()}); state.identity='resident';
@@ -4073,6 +4131,7 @@ document.addEventListener('click', e=>{
         if(!r.ok){ toast(r.why); render(); return; } save(); render(); publishShop(); toast('Taken down; what was left is back in your wallet.'); })(); break; }
     case 'mkt-buy': { const seller=b.dataset.seller, sh=social.shops[seller], it=sh&&(sh.items||[]).find(x=>x.ref===id); if(!it||seller===social.me||!serverBE) return; if(!here(sh.t||'xetropolitan')){ toast(`Be in ${R[sh.t||'xetropolitan'].name} to buy here.`); return; }
       const inp=document.getElementById('mq-'+id), qty=Math.floor(Number(inp&&inp.value||1)); if(!(qty>=1&&qty<=it.left)){ toast(`Choose a quantity from 1 to ${it.left}.`); return; }
+      if(!state.walletV){ toast('Your wallet is moving to the server. One moment.'); walletReady().then(()=>toast('Your wallet is ready. Tap Buy again.')); return; }
       const total=BigInt(qty)*BigInt(it.price), oid=opId('o'); if(BigInt(state.bal.bux)<total){ toast('Not enough BuX.'); return; }
       if(!marketPay(state,{oid,total:total.toString(),qty,asset:it.asset},sh.name)){ toast('Not enough BuX.'); return; } save(); b.disabled=true;
       (async()=>{ try{ const r=await serverBE.call('POST',`/market/order?oid=${encodeURIComponent(oid)}&seller=${encodeURIComponent(seller)}&ref=${encodeURIComponent(id)}&qty=${qty}&price=${it.price}`);
@@ -4180,7 +4239,10 @@ setInterval(()=>{
     const o=state[k]; if(o && Date.now()>=o.end && !state.notified[o.op]){ state.notified[o.op]=1; toast(msg); } });
 },1000);
 /* Test hook for the local test scripts only (test/*.cjs); absent on xland.world. */
-if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT, XW };
+if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT, XW,
+  // gives this citizen produce (vegiex, livestox) or QuarX on the local test server, as if harvested or mined
+  async devCredit(asset, whole){ const op=(asset==='quarx'?'mine-dev-':'prod-dev-')+Date.now().toString(36)+Math.random().toString(36).slice(2,5), units=BigInt(whole)*UNIT;
+    await serverBE.call('POST',`/dev/credit?asset=${asset}&units=${units}&op=${op}`); postLedger(state,op,[[asset,units]],'Test credit','test'); save(); return op; } };
 })();
 </script>
 </body>

@@ -18,7 +18,7 @@ async function citizen(b, name, vp, quarx) {
   await p.fill("#hx-handle", name); await tap(p, '[data-act="hx-name"]'); await p.waitForTimeout(300);
   await tap(p, '[data-act="hx-paths"]'); await p.waitForTimeout(300);
   await tap(p, '[data-act="hx-issue"]'); await p.waitForTimeout(1200);
-  if (quarx) await p.evaluate((q) => { const x = window.__xl; x.postLedger(x.state, "mine-c" + q, [["quarx", BigInt(q) * x.UNIT]], "test seam"); x.postLedger(x.state, "prod-c" + q, [["vegiex", 10n * x.UNIT]], "test harvest"); x.save(); }, quarx);
+  if (quarx) await p.evaluate(async (q) => { await window.__xl.devCredit("quarx", q); await window.__xl.devCredit("vegiex", 10); }, quarx);   // as if mined and harvested
   await hash(p, "#/region/ixeland"); await tap(p, '[data-act="visit"][data-id="ixeland"]'); await p.waitForTimeout(500);
   await hash(p, "#/place/commons", 3000);
   return p;

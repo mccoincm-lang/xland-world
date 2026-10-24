@@ -43,7 +43,7 @@ const DB = {
     return api;
   },
 };
-const env = { DB, ADMIN_KEY: "founder-test-key-1234567890" };
+const env = { DB, ADMIN_KEY: "founder-test-key-1234567890", XLAND_DEV: "1" };   // XLAND_DEV enables /api/dev/credit for the test scripts only
 
 createServer(async (req, res) => {
   try {

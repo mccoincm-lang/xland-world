@@ -276,3 +276,7 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .news{padding:.9rem 1.1rem;margin-top:1.2rem}
 .news h3{font-family:var(--font-display);font-weight:400;font-size:1.2rem;margin:0 0 .4rem}
 .news li{padding:.25rem 0}
+
+/* ===== r52 Server wallet status ===== */
+.wallet-status{display:flex;align-items:center;gap:.7rem;padding:.7rem 1rem;margin:0 0 1.2rem}
+.wallet-status svg{width:28px;height:28px;flex:none}

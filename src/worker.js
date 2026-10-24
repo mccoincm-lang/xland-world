@@ -55,7 +55,14 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS xl_coop_members (uid TEXT PRIMARY KEY, coop TEXT NOT NULL, joined INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS xl_coop_members_coop ON xl_coop_members (coop)",
   "ALTER TABLE xl_shopfronts ADD COLUMN territory TEXT NOT NULL DEFAULT 'xetropolitan'",
-  "ALTER TABLE xl_orders ADD COLUMN meta TEXT"
+  "ALTER TABLE xl_orders ADD COLUMN meta TEXT",
+  // Wallets held by the server (r52): one official wallet per citizen and its append-only ledger of operations
+  "CREATE TABLE IF NOT EXISTS xl_wallets (uid TEXT PRIMARY KEY, data TEXT NOT NULL, ver INTEGER NOT NULL, updated INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS xl_ledger (uid TEXT NOT NULL, op TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (uid, op))",
+  "CREATE INDEX IF NOT EXISTS xl_ledger_at ON xl_ledger (uid, at)",
+  "CREATE TABLE IF NOT EXISTS xl_rejects (uid TEXT NOT NULL, op TEXT NOT NULL, why TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS xl_rejects_at ON xl_rejects (at)",
+  "CREATE TABLE IF NOT EXISTS xl_plots (uid TEXT NOT NULL, slot TEXT NOT NULL, kind TEXT NOT NULL, started INTEGER NOT NULL, ends INTEGER NOT NULL, out INTEGER NOT NULL, op TEXT NOT NULL, PRIMARY KEY (uid, slot))"
 ];
 
 /* ---------------- World economy (server-authoritative) ----------------
@@ -105,6 +112,108 @@ async function worldReport(env, now){
   };
 }
 const orderOut = o => ({ meta: o.meta ? JSON.parse(o.meta) : null, oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
+/* ---------------- Wallets held by the server ----------------
+   The server keeps every citizen's official balances. A citizen's page proposes each operation it performs; the server
+   applies it only if it is valid:
+   - spending (every change negative) is valid when the balance covers it;
+   - locks move value between available and locked, and consumption leaves the locked side;
+   - value enters a wallet only from sources the server can check: the sandbox mint, a seam or a harvest the server
+     timed, a sale or purchase in its own order book, a refund of an order that did not settle, a swap at the posted
+     market rates, or the Forerunner presale at its fixed price and per-citizen cap.
+   Each operation id is applied once. Amounts are integer base units (1 = 10,000 units). */
+const WALLET_ASSETS = ['bux', 'lex', 'vegiex', 'livestox', 'quarx'];
+const RATES = { vegiex: 2, livestox: 5, quarx: 40 };                      // BuX per unit at FarmXSwap, the Green exchange and Forgex
+const VENUES = { farmxswap: ['vegiex', 'livestox'], greenx: ['vegiex', 'livestox', 'quarx'], forgex: ['vegiex', 'livestox', 'quarx'] };
+const PRESALE = { priceBuX: 30, capQuarx: 5 };
+const FARM = { vegiex: { out: 12, secs: 45 }, livestox: { out: 6, secs: 75 } };
+const IMPORT_CAP = { bux: 50000, lex: 1000, vegiex: 10000, livestox: 10000, quarx: 1000 };   // alpha balances carried over once
+const B = v => { try { return BigInt(v); } catch { return null; } };
+async function walletGet(env, uid){
+  const r = await env.DB.prepare('SELECT data, ver FROM xl_wallets WHERE uid = ?1').bind(uid).first();
+  return r ? { w: JSON.parse(r.data), ver: Number(r.ver), exists: true } : { w: { bal: {}, locked: {} }, ver: 0, exists: false };
+}
+function walletOut(w){ const o = { bal: {}, locked: {} }; WALLET_ASSETS.forEach(a => { o.bal[a] = String(w.bal[a] || '0'); o.locked[a] = String(w.locked[a] || '0'); }); return o; }
+const opExists = async (env, uid, op) => !!(await env.DB.prepare('SELECT 1 FROM xl_ledger WHERE uid = ?1 AND op = ?2').bind(uid, op).first());
+/* Apply one operation: avail and locked are maps of asset -> BigInt change. Written once per op id; never below zero. */
+async function walletApply(env, uid, op, avail, locked, data){
+  for(let attempt = 0; attempt < 6; attempt++){
+    const ins = await env.DB.prepare('INSERT OR IGNORE INTO xl_ledger (uid, op, data, at) VALUES (?1, ?2, ?3, ?4)').bind(uid, op, JSON.stringify(data || {}), Date.now()).run();
+    if(!ins.meta.changes) return { ok: true, dup: true };
+    const { w, ver, exists } = await walletGet(env, uid), nw = { bal: { ...w.bal }, locked: { ...w.locked } };
+    let bad = null;
+    for(const [a, d] of Object.entries(avail || {})){ const v = BigInt(nw.bal[a] || '0') + d; if(v < 0n) bad = `Not enough ${a === 'bux' ? 'BuX' : a} in your wallet.`; nw.bal[a] = v.toString(); }
+    for(const [a, d] of Object.entries(locked || {})){ const v = BigInt(nw.locked[a] || '0') + d; if(v < 0n) bad = 'Not enough reserved for this.'; nw.locked[a] = v.toString(); }
+    if(bad){ await env.DB.prepare('DELETE FROM xl_ledger WHERE uid = ?1 AND op = ?2').bind(uid, op).run(); return { ok: false, why: bad }; }
+    const now = Date.now();
+    const r = exists
+      ? await env.DB.prepare('UPDATE xl_wallets SET data = ?1, ver = ver + 1, updated = ?2 WHERE uid = ?3 AND ver = ?4').bind(JSON.stringify(nw), now, uid, ver).run()
+      : await env.DB.prepare('INSERT OR IGNORE INTO xl_wallets (uid, data, ver, updated) VALUES (?1, ?2, 1, ?3)').bind(uid, JSON.stringify(nw), now).run();
+    if(r.meta.changes) return { ok: true, wallet: nw };
+    await env.DB.prepare('DELETE FROM xl_ledger WHERE uid = ?1 AND op = ?2').bind(uid, op).run();   // someone else wrote first: try again
+  }
+  return { ok: false, why: 'The wallet is busy. Try again.' };
+}
+async function quarxSoldToday(env, uid, now){
+  const { results } = await env.DB.prepare("SELECT op, data FROM xl_ledger WHERE uid = ?1 AND at >= ?2 AND (op LIKE 'swap-%' OR op LIKE 'mkt-list-%')").bind(uid, dayStart(now)).all();
+  let sold = 0n; results.forEach(r => { const d = JSON.parse(r.data); if(r.op.startsWith('swap-') && d.d && B(d.d.quarx) < 0n) sold -= B(d.d.quarx); if(r.op.startsWith('mkt-list-') && d.asset === 'quarx') sold += B(d.qty) || 0n; });
+  return sold;
+}
+async function sandboxMint(env, uid, now){
+  if(await opExists(env, uid, 'import-alpha')) return { ok: true, dup: true };   // carried over with the alpha balances
+  const amount = ECON.sandboxBuX * UNIT;
+  const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_mints (uid, amount, at) VALUES (?1, ?2, ?3)').bind(uid, amount, now).run();
+  if(r.meta.changes){ await addWorld(env, 'bux_minted', amount); await addWorld(env, 'bux_reserve', amount); }
+  return walletApply(env, uid, 'sandbox-grant', { bux: BigInt(amount) }, null, { d: { bux: String(amount) }, src: 'mint' });
+}
+/* Validate an operation proposed by a citizen's page and apply it. */
+async function walletPropose(env, uid, body, now){
+  const op = String(body.op || '');
+  if(!/^[A-Za-z0-9_\-:.]{3,96}$/.test(op) || op.startsWith('srv-') || op.startsWith('import-')) return { ok: false, why: 'Invalid operation.' };
+  if(await opExists(env, uid, op)) return { ok: true, dup: true };
+  if(body.kind === 'lock'){
+    const a = body.asset, q = B(body.qty);
+    if(!WALLET_ASSETS.includes(a) || q === null || q <= 0n) return { ok: false, why: 'Invalid reservation.' };
+    if(op.startsWith('mkt-list-') && a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) + q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' }; }
+    const data = { lk: body.lk, asset: a, qty: q.toString() };
+    if(body.lk === 'LOCK') return walletApply(env, uid, op, { [a]: -q }, { [a]: q }, data);
+    if(body.lk === 'UNLOCK') return walletApply(env, uid, op, { [a]: q }, { [a]: -q }, data);
+    if(body.lk === 'CONSUME'){ if(op.startsWith('mkt-deliver-')) return { ok: false, why: 'Sales are settled by the market.' }; return walletApply(env, uid, op, null, { [a]: -q }, data); }
+    return { ok: false, why: 'Invalid reservation.' };
+  }
+  const d = {};
+  for(const l of Array.isArray(body.lines) ? body.lines : []){ const a = l && l[0], v = B(l && l[1]); if(!WALLET_ASSETS.includes(a) || v === null) return { ok: false, why: 'Invalid operation.' }; d[a] = (d[a] || 0n) + v; }
+  const pos = Object.entries(d).filter(([, v]) => v > 0n), data = { d: Object.fromEntries(Object.entries(d).map(([a, v]) => [a, v.toString()])) };
+  if(!pos.length) return walletApply(env, uid, op, d, null, data);                           // spending only
+  if(op === 'sandbox-grant') return sandboxMint(env, uid, now);
+  if(op.startsWith('swap-')){
+    const venue = op.split('-')[1], goods = Object.keys(d).filter(a => a !== 'bux' && d[a] !== 0n), bux = d.bux || 0n;
+    if(!VENUES[venue] || goods.length !== 1 || !VENUES[venue].includes(goods[0])) return { ok: false, why: 'This market does not trade that.' };
+    const a = goods[0], q = d[a], value = (q < 0n ? -q : q) * BigInt(RATES[a]);
+    if(q < 0n){ if(bux > value) return { ok: false, why: 'The price is above the market rate.' };
+      if(a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) - q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' }; } }
+    else if(-bux < value) return { ok: false, why: 'The price is below the market rate.' };
+    return walletApply(env, uid, op, d, null, data);
+  }
+  if(op.startsWith('presale-')){
+    const q = d.quarx || 0n, bux = d.bux || 0n;
+    if(Object.keys(d).some(a => a !== 'quarx' && a !== 'bux') || q <= 0n || -bux < q * BigInt(PRESALE.priceBuX)) return { ok: false, why: 'Presale QuarX is sold only at its fixed price.' };
+    const { results } = await env.DB.prepare("SELECT data FROM xl_ledger WHERE uid = ?1 AND op LIKE 'presale-%'").bind(uid).all();
+    const before = results.reduce((s, r) => s + (B(JSON.parse(r.data).d.quarx) || 0n), 0n);
+    if(before + q > BigInt(PRESALE.capQuarx * UNIT)) return { ok: false, why: 'The presale cap per citizen is reached.' };
+    return walletApply(env, uid, op, d, null, data);
+  }
+  if(op.startsWith('mkt-refund-')){
+    const oid = op.slice(11), pay = await env.DB.prepare('SELECT data FROM xl_ledger WHERE uid = ?1 AND op = ?2').bind(uid, 'mkt-pay-' + oid).first();
+    if(!pay || await opExists(env, uid, 'mkt-recv-' + oid)) return { ok: false, why: 'Nothing to refund.' };
+    const o = await env.DB.prepare('SELECT status FROM xl_orders WHERE oid = ?1').bind(oid).first();
+    if(o && !['declined', 'cancelled'].includes(o.status)) return { ok: false, why: 'This order settled.' };
+    const paid = -(B(JSON.parse(pay.data).d.bux) || 0n);
+    if(Object.keys(d).length !== 1 || !(d.bux > 0n) || d.bux > paid) return { ok: false, why: 'A refund returns only what was paid.' };
+    return walletApply(env, uid, op, d, null, data);
+  }
+  return { ok: false, why: 'Only the world can credit this.' };   // seams, harvests and market settlements are credited by the server itself
+}
+
 let schemaReady = false;
 async function ensureSchema(env){ if(schemaReady) return;
   for(const s of SCHEMA){ try { await env.DB.prepare(s).run(); } catch (e) { if(!s.startsWith('ALTER')) throw e; } }   // ALTER fails harmlessly once the column exists
@@ -178,7 +287,80 @@ async function api(req, env, url){
     if(reward <= 0) return fail(409, 'All minable QuarX has been extracted.');
     await addWorld(env, 'quarx_mined', reward);
     await env.DB.prepare('INSERT INTO xl_minelog (uid, at, amount) VALUES (?1, ?2, ?3)').bind(me.uid, now, reward).run();
-    return json({ok:true, now, reward, mined: mined + reward});
+    const op = /^mine-[A-Za-z0-9_\-]{1,60}$/.test(q.get('op') || '') ? q.get('op') : 'mine-srv-' + now.toString(36);
+    await walletApply(env, me.uid, op, { quarx: BigInt(reward) }, null, { d: { quarx: String(reward) }, src: 'seam' });   // the seam pays into the wallet
+    return json({ok:true, now, reward, op, mined: mined + reward});
+  }
+
+  // Local test server only (never set on xland.world): give a test citizen produce or QuarX as if harvested or mined.
+  if(p === '/api/dev/credit' && req.method === 'POST' && env.XLAND_DEV === '1'){
+    const asset = q.get('asset'), units = Math.floor(Number(q.get('units')) || 0), op = q.get('op') || '';
+    if(!WALLET_ASSETS.includes(asset) || units <= 0 || !/^(mine|prod)-dev-[A-Za-z0-9_-]{1,40}$/.test(op)) return fail(400, 'Invalid test credit.');
+    const r = await walletApply(env, me.uid, op, { [asset]: BigInt(units) }, null, { d: { [asset]: String(units) }, src: 'dev' });
+    return json({ok: r.ok, why: r.why});
+  }
+
+  /* Wallets held by the server */
+  if(p === '/api/wallet' && req.method === 'GET'){
+    const { w, exists } = await walletGet(env, me.uid);
+    const { results } = await env.DB.prepare('SELECT op, at FROM xl_ledger WHERE uid = ?1 ORDER BY at DESC LIMIT 60').bind(me.uid).all();
+    return json({ok:true, now, exists, ...walletOut(w), ops: results.map(r => r.op), recent: results.map(r => [r.op, Number(r.at)])});
+  }
+  if(p === '/api/wallet/import' && req.method === 'POST'){
+    // Alpha citizens kept their balances on their device. Each carries them over once, within caps, when the server wallet starts.
+    let body; try { body = await req.json(); } catch { return fail(400, 'Invalid request.'); }
+    if(!body || !body.legacy) return fail(400, 'Nothing to import.');
+    if((await walletGet(env, me.uid)).exists || await env.DB.prepare('SELECT 1 FROM xl_ledger WHERE uid = ?1').bind(me.uid).first()) return fail(409, 'This wallet already started.');
+    const avail = {}, locked = {}, data = { bal: {}, locked: {} };
+    for(const a of WALLET_ASSETS){
+      const cap = BigInt(IMPORT_CAP[a] * UNIT), v = B((body.bal || {})[a]) || 0n, l = B((body.locked || {})[a]) || 0n;
+      avail[a] = v < 0n ? 0n : v > cap ? cap : v; locked[a] = l < 0n ? 0n : l > cap ? cap : l;
+      data.bal[a] = avail[a].toString(); data.locked[a] = locked[a].toString();
+    }
+    const r = await walletApply(env, me.uid, 'import-alpha', avail, locked, data);
+    return r.ok ? json({ok:true, ...walletOut(r.wallet || (await walletGet(env, me.uid)).w)}) : fail(409, r.why);
+  }
+  if(p === '/api/ledger' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    let body; try { body = await req.json(); } catch { return fail(400, 'Invalid request.'); }
+    const r = await walletPropose(env, me.uid, body || {}, now);
+    if(!r.ok){   // kept for the founder: a refused operation is either a forgery or a rule the server does not know yet
+      await env.DB.prepare('INSERT INTO xl_rejects (uid, op, why, body, at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(me.uid, String((body || {}).op || '').slice(0, 96), r.why, JSON.stringify(body || {}).slice(0, 2000), now).run();
+      return json({ok:false, rejected:true, error: r.why}, 422); }
+    return json({ok:true, dup: !!r.dup});
+  }
+
+  if(p === '/api/admin/wallets' && req.method === 'GET'){
+    if(!me.owner) return fail(403, 'Founder only.');
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_wallets').first();
+    const imp = await env.DB.prepare("SELECT COUNT(*) AS n FROM xl_ledger WHERE op = 'import-alpha'").first();
+    const { results } = await env.DB.prepare('SELECT uid, op, why, at FROM xl_rejects ORDER BY at DESC LIMIT 30').all();
+    return json({ok:true, wallets: Number(n.n), imported: Number(imp.n), rejects: results.map(r => ({ uid: r.uid.slice(0, 6), op: r.op, why: r.why, at: Number(r.at) }))});
+  }
+
+  /* FarmX harvests timed by the server: the communal field, and a citizen's own farmstead plot */
+  if(p === '/api/farm/start' && req.method === 'POST'){
+    const slot = q.get('slot') === 'own' ? 'own' : 'field', kind = q.get('kind'), f = FARM[kind];
+    if(!f) return fail(400, 'Choose what to produce.');
+    if(slot === 'own' && !(await env.DB.prepare("SELECT 1 FROM xl_ledger WHERE uid = ?1 AND op LIKE 'proj-%consume%'").bind(me.uid).first())) return fail(403, 'Your own plot needs a finished farmstead.');
+    const open = await env.DB.prepare('SELECT * FROM xl_plots WHERE uid = ?1 AND slot = ?2').bind(me.uid, slot).first();
+    if(open) return json({ok:true, now, start: Number(open.started), end: Number(open.ends), out: Number(open.out), kind: open.kind, op: open.op});
+    const mult = Math.min(1, Math.max(0.5, Number(q.get('mult')) || 1));   // the page may only lower a yield (droughts, events)
+    const out = Math.max(1, Math.floor(f.out * mult)), end = now + f.secs * 1000, op = (slot === 'own' ? 'prod-own-' : 'prod-') + kind + '-' + now.toString(36) + Math.random().toString(36).slice(2, 6);
+    await env.DB.prepare('INSERT OR IGNORE INTO xl_plots (uid, slot, kind, started, ends, out, op) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)').bind(me.uid, slot, kind, now, end, out, op).run();
+    const s2 = await env.DB.prepare('SELECT * FROM xl_plots WHERE uid = ?1 AND slot = ?2').bind(me.uid, slot).first();
+    return json({ok:true, now, start: Number(s2.started), end: Number(s2.ends), out: Number(s2.out), kind: s2.kind, op: s2.op});
+  }
+  if(p === '/api/farm/claim' && req.method === 'POST'){
+    const slot = q.get('slot') === 'own' ? 'own' : 'field';
+    const pl = await env.DB.prepare('SELECT * FROM xl_plots WHERE uid = ?1 AND slot = ?2').bind(me.uid, slot).first();
+    if(!pl) return fail(404, 'Nothing is growing.');
+    if(now < Number(pl.ends)) return fail(409, 'The harvest is not ready yet.');
+    const del = await env.DB.prepare('DELETE FROM xl_plots WHERE uid = ?1 AND slot = ?2 AND op = ?3').bind(me.uid, slot, pl.op).run();
+    if(!del.meta.changes) return fail(409, 'This harvest was already brought in.');
+    const amount = BigInt(Number(pl.out) * UNIT);
+    await walletApply(env, me.uid, pl.op, { [pl.kind]: amount }, null, { d: { [pl.kind]: amount.toString() }, src: 'harvest' });
+    return json({ok:true, now, op: pl.op, kind: pl.kind, out: Number(pl.out)});
   }
 
   if(p === '/api/bux/sandbox' && req.method === 'POST'){
@@ -282,6 +464,12 @@ async function api(req, env, url){
       meta = JSON.stringify({ title: String(item.title || 'A rare asset').slice(0, 60), kind: String(item.kind || 'Collectible').slice(0, 20), link });
     }
     const total = qty * unit, fee = Math.floor(total * feeBps / 10000);
+    const sold = await env.DB.prepare("SELECT COALESCE(SUM(qty), 0) AS n FROM xl_orders WHERE seller = ?1 AND ref = ?2 AND status IN ('paid', 'filled')").bind(seller, ref).first();
+    if(Number(sold.n) + qty > Math.floor(Number(item.qty) || 0)) return fail(409, 'Not enough of this item is left.');
+    // Both wallets must cover the trade on the server: the buyer's BuX, the merchant's reserved goods.
+    const paid = await opExists(env, me.uid, 'mkt-pay-' + oid);
+    if(!paid && BigInt((await walletGet(env, me.uid)).w.bal.bux || '0') < BigInt(total)) return fail(409, 'Not enough BuX in your wallet.');
+    if(item.asset !== 'item' && BigInt((await walletGet(env, seller)).w.locked[item.asset] || '0') < BigInt(qty * UNIT)) return fail(409, 'This shop\'s stock is not settled yet. Try again after the merchant visits Xland.');
     // One statement: the order is written only if the listing still has enough stock, so two buyers can never oversell it.
     const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated, meta)
       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'filled', ?10, ?10, ?12
@@ -292,7 +480,17 @@ async function api(req, env, url){
       if(dup && dup.buyer === me.uid) return json({ok:true, order: orderOut(dup)});
       return fail(409, 'Not enough of this item is left.');
     }
-    // Settled at once from the merchant's reserved stock: the buyer receives now, the merchant's wallet settles on their next visit.
+    // Settled at once on the server: the buyer pays and receives, the merchant's reserved goods leave and the BuX arrives.
+    const pay = await walletApply(env, me.uid, 'mkt-pay-' + oid, { bux: -BigInt(total) }, null, { d: { bux: String(-total) }, src: 'order' });
+    if(!pay.ok){ await env.DB.prepare("UPDATE xl_orders SET status = 'declined', updated = ?2 WHERE oid = ?1").bind(oid, now).run(); return fail(409, pay.why); }
+    if(item.asset !== 'item'){
+      const del = await walletApply(env, seller, 'mkt-deliver-' + oid, null, { [item.asset]: -BigInt(qty * UNIT) }, { lk: 'CONSUME', asset: item.asset, qty: String(qty * UNIT), src: 'order' });
+      if(!del.ok){ await env.DB.prepare("UPDATE xl_orders SET status = 'declined', updated = ?2 WHERE oid = ?1").bind(oid, now).run();
+        await walletApply(env, me.uid, 'mkt-refund-' + oid, { bux: BigInt(total) }, null, { d: { bux: String(total) }, src: 'order' });
+        return fail(409, 'This shop\'s stock is not settled yet. Your BuX came back.'); }
+      await walletApply(env, me.uid, 'mkt-recv-' + oid, { [item.asset]: BigInt(qty * UNIT) }, null, { d: { [item.asset]: String(qty * UNIT) }, src: 'order' });
+    } else await env.DB.prepare('INSERT OR IGNORE INTO xl_ledger (uid, op, data, at) VALUES (?1, ?2, ?3, ?4)').bind(me.uid, 'mkt-recv-' + oid, JSON.stringify({ item: true }), now).run();
+    await walletApply(env, seller, 'mkt-sale-' + oid, { bux: BigInt(total - fee) }, null, { d: { bux: String(total - fee) }, src: 'order' });
     await addWorld(env, 'market_sales', 1); await addWorld(env, 'market_volume', total); await addWorld(env, 'market_fees', fee);
     return json({ok:true, order: orderOut(await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first())});
   }

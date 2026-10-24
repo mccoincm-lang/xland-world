@@ -51,7 +51,8 @@ async function citizen(b, name, vp) {
   await lea.fill(`#ip-${leaItem}`, "30"); await tap(lea, `[data-act="item-list"][data-id="${leaItem}"]`); await lea.waitForTimeout(3500);
   await lea.screenshot({ path: `${out}/xa-lea-resale.png`, fullPage: true });
   const leaUid = await lea.evaluate(() => window.__xl.social.me), leaRef = await lea.evaluate(() => window.__xl.state.listings[0].ref);
-  const k = "z".repeat(40); await api(k, "GET", "/me");
+  const k = ("z" + Date.now().toString(36)).padEnd(40, "z"); await api(k, "GET", "/me");
+  await fetch(base + "api/ledger", { method: "POST", headers: { "x-xland-key": k, "content-type": "application/json" }, body: JSON.stringify({ op: "sandbox-grant", kind: "post", lines: [["bux", "10000000"]] }) });   // the buyer's sandbox BuX
   const o = (await api(k, "POST", `/market/order?oid=o-flip${Date.now()}&seller=${leaUid}&ref=${leaRef}&qty=1&price=300000`)).body.order;
   console.log("Resale order fee:", o && `${o.fee} of ${o.total} (${o.fee / o.total * 100}%)`, o && o.meta);
   console.log("Two at once refused:", (await api(k, "POST", `/market/order?oid=o-flip2${Date.now()}&seller=${leaUid}&ref=${leaRef}&qty=1&price=300000`)).body.error);
