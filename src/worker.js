@@ -49,6 +49,9 @@ const SCHEMA = [
   "CREATE INDEX IF NOT EXISTS xl_orders_buyer ON xl_orders (buyer, updated)",
   "CREATE INDEX IF NOT EXISTS xl_orders_seller ON xl_orders (seller, updated)",
   "CREATE INDEX IF NOT EXISTS xl_orders_ref ON xl_orders (seller, ref, status)",
+  "CREATE TABLE IF NOT EXISTS xl_coops (id TEXT PRIMARY KEY, name TEXT NOT NULL, founder TEXT NOT NULL, territory TEXT NOT NULL, created INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS xl_coop_members (uid TEXT PRIMARY KEY, coop TEXT NOT NULL, joined INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS xl_coop_members_coop ON xl_coop_members (coop)",
   "ALTER TABLE xl_shopfronts ADD COLUMN territory TEXT NOT NULL DEFAULT 'xetropolitan'"
 ];
 
@@ -69,7 +72,9 @@ const SHOPS = {
   farmx:        { quarx: 2, feeBps: 100, assets: ['vegiex', 'livestox'] },
   ximberland:   { quarx: 3, feeBps: 100, assets: ['vegiex'] },
   xalp:         { quarx: 4, feeBps: 0,   assets: ['quarx'] },
-  tundrax:      { quarx: 6, feeBps: 0,   assets: ['vegiex', 'livestox', 'quarx'], max: 50 }
+  tundrax:      { quarx: 6, feeBps: 0,   assets: ['vegiex', 'livestox', 'quarx'], max: 50 },
+  // Ixeland cooperatives: up to five members, each paying an equal share of 3 QuarX; open for sale from three members
+  ixeland:      { quarx: 3, feeBps: 100, assets: ['vegiex', 'livestox', 'quarx'], coop: { max: 5, openAt: 3 } }
 };
 const MARKET = { maxQty: 1000, maxOpenPerBuyer: 20, cancelAfterMs: 24 * 3600 * 1000 };
 /* Parcels no citizen can ever claim: the eternal House on the River (Aquax) and the locked reserves. */
@@ -184,11 +189,49 @@ async function api(req, env, url){
     const name = String(q.get('name') || '').trim().slice(0, 32), t = q.get('t') || 'xetropolitan', cfg = SHOPS[t];
     if(name.length < 2) return fail(400, 'Give your shop a name.');
     if(!cfg) return fail(400, 'Shops cannot be built in this territory yet.');
+    if(cfg.coop) return fail(400, 'In Ixeland, found or join a cooperative.');
     if(cfg.max){ const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_shopfronts WHERE territory = ?1').bind(t).first(); if(n && Number(n.n) >= cfg.max) return fail(409, 'Every shop in this territory is taken.'); }
     const amount = cfg.quarx * UNIT;
     const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at, territory) VALUES (?1, ?2, ?3, ?4, ?5)').bind(me.uid, name, amount, now, t).run();
     if(r.meta.changes){ await addWorld(env, 'shopfronts', 1); await addWorld(env, 'quarx_consumed', amount); }
     return json({ok:true, built: !!r.meta.changes, quarx: amount});
+  }
+
+  if(p === '/api/coops' && req.method === 'GET'){
+    const { results: cs } = await env.DB.prepare('SELECT id, name, founder, created FROM xl_coops ORDER BY created LIMIT 500').all();
+    const { results: ms } = await env.DB.prepare('SELECT uid, coop FROM xl_coop_members ORDER BY joined').all();
+    const coops = {}; cs.forEach(c => { coops[c.id] = { name: c.name, founder: c.founder, created: Number(c.created), members: [] }; });
+    ms.forEach(m => { if(coops[m.coop]) coops[m.coop].members.push(m.uid); });
+    return json({ok:true, coops, max: SHOPS.ixeland.coop.max, openAt: SHOPS.ixeland.coop.openAt});
+  }
+
+  if((p === '/api/coop/create' || p === '/api/coop/join') && req.method === 'POST'){
+    const cfg = SHOPS.ixeland, id = q.get('id') || '', share = Math.floor(cfg.quarx * UNIT / cfg.coop.max);
+    if(!ID_RE.test(id)) return fail(400, 'Invalid cooperative.');
+    if(await env.DB.prepare('SELECT 1 FROM xl_shopfronts WHERE uid = ?1').bind(me.uid).first()) return fail(409, 'You already keep a shop. A citizen keeps one shop.');
+    let name;
+    if(p === '/api/coop/create'){
+      name = String(q.get('name') || '').trim().slice(0, 32);
+      if(name.length < 2) return fail(400, 'Give the cooperative a name.');
+      const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_coops (id, name, founder, territory, created) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, name, me.uid, 'ixeland', now).run();
+      if(!r.meta.changes) return fail(409, 'This cooperative already exists.');
+      await addWorld(env, 'shopfronts', 1);
+    } else {
+      const c = await env.DB.prepare('SELECT name FROM xl_coops WHERE id = ?1').bind(id).first();
+      if(!c) return fail(404, 'No such cooperative.');
+      name = c.name;
+    }
+    // One statement: the member is added only while the cooperative has room, so it can never pass five.
+    const m = await env.DB.prepare('INSERT OR IGNORE INTO xl_coop_members (uid, coop, joined) SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM xl_coop_members WHERE coop = ?2) < ?4')
+      .bind(me.uid, id, now, cfg.coop.max).run();
+    if(!m.meta.changes){
+      if(p === '/api/coop/create') await env.DB.prepare('DELETE FROM xl_coops WHERE id = ?1 AND founder = ?2').bind(id, me.uid).run();
+      return fail(409, 'This cooperative is full, or you are already in one.');
+    }
+    await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at, territory) VALUES (?1, ?2, ?3, ?4, ?5)').bind(me.uid, name, share, now, 'ixeland').run();
+    await addWorld(env, 'quarx_consumed', share);
+    const { results } = await env.DB.prepare('SELECT uid FROM xl_coop_members WHERE coop = ?1 ORDER BY joined').bind(id).all();
+    return json({ok:true, id, name, members: results.length, memberIds: results.map(r => r.uid), share});
   }
 
   if(p === '/api/market/orders' && req.method === 'GET'){
@@ -208,6 +251,8 @@ async function api(req, env, url){
     const front = await env.DB.prepare('SELECT territory FROM xl_shopfronts WHERE uid = ?1').bind(seller).first();   // the server's record decides the territory, not the shop document
     const cfg = front && SHOPS[front.territory];
     if(!cfg) return fail(409, 'This shop has no shopfront.');
+    if(cfg.coop){ const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_coop_members WHERE coop = (SELECT coop FROM xl_coop_members WHERE uid = ?1)').bind(seller).first();
+      if(!n || Number(n.n) < cfg.coop.openAt) return fail(409, `This cooperative opens for sale at ${cfg.coop.openAt} members.`); }
     const item = (Array.isArray(shop.items) ? shop.items : []).find(x => x && x.ref === ref);
     if(!item || !cfg.assets.includes(item.asset)) return fail(404, 'This item is no longer listed.');
     const unit = Number(item.price);
