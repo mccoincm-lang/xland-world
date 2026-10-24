@@ -957,6 +957,10 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .tshops{margin-top:2.2rem;padding-top:1.6rem;border-top:1px solid var(--brass-hairline)}
 .tshops .shop-head{margin-top:1.8rem}
 
+/* ===== r48 Shops on the living map ===== */
+.pl.plot.shop{color:#FBE7B0;border-color:rgba(210,165,90,.55);background:rgba(26,18,5,.78)}
+.pl.plot.shop i{background:#D2A55A;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 6px rgba(251,231,176,.6)}
+
 </style>
 </head>
 <body>
@@ -1449,10 +1453,14 @@ const QUESTS = [
  {id:'vote', title:'Enact a law', desc:'Propose a motion at CompleX, vote, and see the world change.', prog:s=>[(s.proposals||[]).some(p=>p.outcome==='EXECUTED')||Object.values(s.sharedResults||{}).some(x=>x.r==='EXECUTED')?1:0,1], dim:'Civic history'},
  {id:'build', title:'Raise a Special Building', desc:'Bring QuarX to the Civic plaza and complete a construction.', prog:s=>[s.builds.length?1:0,1], dim:'Builder status'},
  {id:'locked-lands', title:'Find the locked lands', desc:'Inspect Xetland and Xasteland, the two reserves that stay closed in this era.', prog:s=>[['xetland','xasteland'].filter(r=>s.inspected.includes(r)).length,2], dim:'Territorial familiarity'},
- {id:'river', title:'Learn the exception of the river', desc:'Inspect Aquax and The House on the River.', prog:s=>[s.inspected.includes('aquax')?1:0,1], dim:'Territorial familiarity'}
+ {id:'river', title:'Learn the exception of the river', desc:'Inspect Aquax and The House on the River.', prog:s=>[s.inspected.includes('aquax')?1:0,1], dim:'Territorial familiarity'},
+ {id:'firstbuy', title:'Buy from a citizen', desc:'Buy goods from another citizen\'s shop, stall or cooperative, and receive them.', prog:s=>[s.ledger.some(e=>e.op.startsWith('mkt-recv-'))?1:0,1], dim:'Economic conduct'},
+ {id:'shopopen', title:'Open a shop of your own', desc:'Build a shop in a territory of your choice: Plaxa, a farm stand, a green stall, a trading post, a lodge, a cooperative or a bazaar stall.', prog:s=>[s.shop?1:0,1], dim:'Merchant licence'},
+ {id:'firstsale', title:'Make a first sale', desc:'Sell something you produced, found or made to another citizen.', prog:s=>[s.ledger.some(e=>e.op.startsWith('mkt-sale-'))?1:0,1], dim:'Economic conduct'}
 ];
 const CHAINS = [['orientation','Orientation'],['farm','Farm and trade'],['civic','Residence, law and building'],['lands','The ten territories']];
 const QMETA = { passport:['orientation',[],'#/hotex'], 'first-visit':['orientation',['passport'],'#/world'], 'three-lands':['orientation',['first-visit'],'#/world'], landmarks:['orientation',['three-lands'],'#/world'], culture:['orientation',['landmarks'],'#/place/xcool'],
+  firstbuy:['farm',['passport'],'#/place/plaxa'], shopopen:['farm',['passport'],'#/place/shoppex'], firstsale:['farm',['shopopen'],'#/place/shoppex'],
   harvest:['farm',['passport'],'#/place/fields'], farmswap:['farm',['harvest'],'#/place/farmxswap'], citytrade:['farm',['farmswap'],'#/place/forgex'],
   home:['civic',['passport'],'#/place/homax'], parcel:['farm',['passport'],'#/parcel/FX-A-01'], farmstead:['farm',['parcel'],'#/parcel/FX-A-01'], ownharvest:['farm',['farmstead'],'#/place/fields'], quarxfirst:['civic',['passport'],'#/place/quarx'], vote:['civic',['home'],'#/place/complex'], build:['civic',['vote','quarxfirst'],'#/place/civicsite'],
   parxpost:['lands',['passport'],'#/place/parx'], feedcity:['farm',['citytrade'],'#/place/forgex'], nativeremote:['farm',['farmswap'],'#/place/farmxswap'], tundraxlong:['lands',['passport'],'#/place/tundraxhomes'], gateway:['lands',['passport'],'#/place/oracles'],
@@ -1473,6 +1481,7 @@ const MISSIONS = [
   {id:'voice', title:'Community Voice', type:'Governance', issuer:'Ixeland assembly', place:'commons', why:'Ixeland governs itself as a community.', stages:['assembly'], consequence:'Your civic record shows local participation.', reward:'history', prereq:['arrival']},
   {id:'square', title:'The public square', type:'Social', issuer:'ParX', place:'parx', why:'A civilization is its people. Meet them.', stages:['parxpost'], consequence:'Your voice is part of the public record of the square.', reward:'history', prereq:['arrival']},
   {id:'gateway', title:'Gateway Preview', type:'Discovery', issuer:'Xahara bazaar', place:'bazaar', why:'One day the outside world will connect here.', stages:['gateway','rare'], consequence:'You hold a rare asset and know the future boundary.', reward:'history', prereq:['arrival']},
+  {id:'merchant', title:"The Merchant's Way", type:'Trade', issuer:'Shoppex guild, Plaxa', place:'shoppex', why:'Makers sell to citizens directly, without middlemen.', stages:['firstbuy','shopopen','firstsale'], consequence:'Your passport carries a merchant licence and your first sale is on record.', reward:'history', prereq:['arrival']},
   {id:'ten', title:'The ten territories', type:'Discovery', issuer:'Chronicle Archivist', place:null, why:'Even locked lands carry meaning.', stages:['resort','locked-lands','river'], consequence:'Every territory, open or sealed, is part of your knowledge.', reward:'knowledge', prereq:['arrival']}
 ];
 const MBY = Object.fromEntries(MISSIONS.map(m=>[m.id,m]));
@@ -1725,8 +1734,9 @@ function difficultyFor(miners){ return Math.max(1, miners/ECONOMY.targetMiners);
 let world=null;
 async function refreshWorld(){ if(!serverMode||!serverBE) return; try{ world=await serverBE.call('GET','/world'); world.at=Date.now(); }catch(e){ return; }
   const {route,arg}=parse(); if(route==='place' && ['quarx','vaults','banx'].includes(arg)){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
+  if(route==='founder' && social.isOwner) render();
   const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML()+worldMarketHTML(); }
-function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx'].includes(arg))||route==='economy'; }
+function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx'].includes(arg))||route==='economy'||route==='founder'; }
 const fmtU = (u, dp=0) => (Number(u)/Number(UNIT)).toLocaleString('en-US',{maximumFractionDigits:dp});
 function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the world ledger…</p>':'';
   const q=world.quarx, pct=q.mined/q.minable*100;
@@ -1745,7 +1755,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r47';
+const BUILD = 'r48';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1768,6 +1778,7 @@ async function socialInit(db, uid, u){
   db.collection('gov').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.gov=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
   db.collection('ballots').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.ballots=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
   db.collection('shops').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.shops=m; socialChanged(); }, err);
+  if(serverMode) serverBE.call('GET','/coops').then(k=>{ market.coops=k.coops||{}; socialChanged(); }).catch(()=>{});
   db.collection('claims').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.claims=m; socialChanged(); backfillClaims(); }, err);
   publishCitizen(); publishProgress(); publishShop(); setInterval(()=>{ publishCitizen(); publishProgress(); }, 120000);
   if(serverMode){ marketSync(); setInterval(()=>{ if(marketWanted()) marketSync(); }, 15000); }
@@ -1777,7 +1788,7 @@ async function socialInit(db, uid, u){
 function schedulePublish(){ if(!social.db) return; clearTimeout(social.pubTimer); social.pubTimer=setTimeout(()=>{ publishCitizen(); publishProgress(); publishShop(); }, 2500); }
 function milestones(st){ st=st||state; const L=st.ledger, has=p=>L.some(e=>e.op.startsWith(p));
   return { passport:!!st.passport, visited:(st.visited||[]).length>0, harvest:has('prod-'), trade:has('swap-'), quarx:has('mine-')||has('presale-'), parcel:(st.rights||[]).some(r=>r.status==='active'), home:(st.homes||[]).length>0,
-    build:(st.buildings||[]).length>0||(st.builds||[]).length>0, vote:(st.proposals||[]).some(p=>p.myVote)||(st.sharedVotes||0)>0, parx:(st.parxPosts||0)>0, mission:Object.entries(st.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='rewarded'), firstSteps:!!(st.guide&&st.guide.finished) }; }
+    build:(st.buildings||[]).length>0||(st.builds||[]).length>0, vote:(st.proposals||[]).some(p=>p.myVote)||(st.sharedVotes||0)>0, parx:(st.parxPosts||0)>0, shop:!!st.shop, sale:has('mkt-sale-'), bought:has('mkt-recv-'), mission:Object.entries(st.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='rewarded'), firstSteps:!!(st.guide&&st.guide.finished) }; }
 async function publishProgress(){ if(!social.db||!social.me||!social.writable) return;
   try{ await social.db.doc('progress/'+social.me).set({v:1, handle:(state.privacy||{}).name!=='private'?state.handle:'', identity:state.identity, milestones:milestones(), route:location.hash, build:BUILD, updatedAt:Date.now(), createdAt:state.createdAt||null}); }catch(e){} }
 function myStructures(){ const out=[]; (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(pp) out.push({kind:pp.building==='homax'?'homax':'parcel', parcel:pp.id, at:pp.at, t:pp.t}); });
@@ -2367,6 +2378,8 @@ const XW = (function(){
       else if(u.kind==='forsale'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.95,.06,0,[.95,.91,.8],[1,.95,.8,.6])); pt(a[0],a[1],.35,[1,.94,.78],3,2); top=1.1; }
       else if(u.kind==='held'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.8,.06,0,[.85,.66,.32],[1,.8,.4,1])); put('cyl',a[0],a[1],.05,1.9,.05,0,[.8,.78,.72],N); put('box',a[0]+.9,a[1],.9,.45,.05,0,[.85,.62,.28],[1,.78,.4,1],1.4); top=2.2; }
       else if(u.kind==='farmstead'){ put('house',a[0],a[1],1.4,1.1,1,.3,[.48,.3,.18],[1,.78,.45,1]); put('cyl',a[0]+5,a[1]-2,.32,1.8,.32,0,[.66,.64,.6],[0,0,0,0]); pt(a[0],a[1],1.4,[1,.8,.45],2.4,0); top=2; }
+      else if(u.kind==='shop'){ const c=u.tint||[.85,.62,.3]; put('box',a[0],a[1],1.7,1.1,1.3,u.rot||0,[.42,.34,.26],N); put('cone',a[0],a[1],1.45,.8,1.45,u.rot||0,c,[c[0],c[1],c[2],.8],1.1);
+        pt(a[0],a[1],2.1,[1,.84,.5],u.mine?4.2:3.2,2); top=2.1; }
       else if(u.kind==='scaffold'){ const h=u.h||1; put('box',a[0],a[1],1.6,h,1.6,0,[.36,.33,.3],[1,.75,.4,1]); for(let i=0;i<4;i++) pt(a[0]+(i%2?5:-5),a[1]+(i<2?5:-5),h+.3,[1,.75,.35],1,0); top=h+.5; }
       const [x,z]=toW(a[0],a[1]); placeAnchors['u-'+u.id]=[x,heightAt(a[0],a[1])+top+.4,z]; });
     userObjs=[]; for(const g in L) if(L[g].length) userObjs.push(makeInstanced(GEOS[g],L[g]));
@@ -2576,7 +2589,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   function buildUserLabels(lay){
     for(const k in placeEls) if(k.startsWith('u-')){ placeEls[k].remove(); delete placeEls[k]; }
     userList.forEach(u=>{ if(mode==='region' && u.region!==focus) return;
-      const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'?'plot sale':u.kind==='held'?'plot held':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.innerHTML=`<i></i>${esc(u.label)}`;
+      const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'?'plot sale':u.kind==='held'?'plot held':u.kind==='shop'?'plot shop':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.dataset.region=u.region||''; el.innerHTML=`<i></i>${esc(u.label)}`;
       if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',u.label); } lay.insertBefore(el, lay.firstChild); placeEls['u-'+u.id]=el; }); }
   function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
     const base=r.people||(id==='aquax'?'Water areas':'Locked reserve'); sp.textContent=regionNotes[id]?`${base} · ${regionNotes[id]}`:base; } }
@@ -2710,8 +2723,8 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
       rects.push([cx-el._w/2,cy-el._h,cx+el._w/2,cy]); }
     const cand=[];
     for(const id in placeEls){ const el=placeEls[id], a=placeAnchors[id]; const p=a&&project(a[0],a[1],a[2]);
-      if(!p || (id==='house' ? !(hoverHouse||selPlace==='house') : (!showPlaces && id!==selPlace && (!id.startsWith('u-') || id.startsWith('u-p-')))) || p[0]<-40 || p[0]>cssW+40 || p[1]<0 || p[1]>cssH+20){ el.classList.add('hide'); continue; }
-      cand.push([id==='house'?-3:id.startsWith('u-p-')&&id!==selPlace?Math.hypot(p[0]-cssW/2,p[1]-cssH/2)+40:id.startsWith('u-')?-2:id===selPlace?-1:Math.hypot(p[0]-cssW/2,p[1]-cssH/2),id,p]); }
+      if(!p || (id==='house' ? !(hoverHouse||selPlace==='house') : (!showPlaces && id!==selPlace && (!id.startsWith('u-') || id.startsWith('u-p-') || (id.startsWith('u-s-') && el.dataset.region!==selected)))) || p[0]<-40 || p[0]>cssW+40 || p[1]<0 || p[1]>cssH+20){ el.classList.add('hide'); continue; }
+      cand.push([id==='house'?-3:(id.startsWith('u-p-')||id.startsWith('u-s-'))&&id!==selPlace?Math.hypot(p[0]-cssW/2,p[1]-cssH/2)+40:id.startsWith('u-')?-2:id===selPlace?-1:Math.hypot(p[0]-cssW/2,p[1]-cssH/2),id,p]); }
     cand.sort((a,b)=>a[0]-b[0]);
     for(const [,id,p] of cand){ const el=placeEls[id]; if(!el._w){ el._w=el.offsetWidth||80; el._h=el.offsetHeight||22; }
       const x0=p[0]-el._w/2-3, y0=p[1]-el._h-12, x1=p[0]+el._w/2+3, y1=p[1];
@@ -3116,6 +3129,11 @@ function runSelfTests(){
     marketPay(b0,o,'Dune stall'); o.status='filled'; const d=marketDeliver(s0,o) && !marketDeliver(s0,o) && !s0.items.length && !s0.listings.length, r=marketReceive(b0,o) && !marketReceive(b0,o);
     const resale=b0.items[0], flip=itemFeeBps(resale)===SIM.flip.maxBps && !isMade(resale);
     return open && reg && listed && d && r && flip && b0.items.length===1 && BigInt(b0.bal.bux)===bux0-10n*UNIT && reconcile(s0) && reconcile(b0); });
+  t('Open shops stand on the map near their market, one stall per cooperative', ()=>{ const keep=social.shops, keepMine=state.shop, keepCoops=market.coops;
+    try{ social.shops={a:{name:'A',t:'farmx',openUntil:Date.now()+9e5},b:{name:'B',t:'ixeland',coop:'k',openUntil:Date.now()+9e5},c:{name:'C',t:'ixeland',coop:'k',openUntil:Date.now()+9e5},d:{name:'Old',t:'xalp',openUntil:Date.now()-1}};
+      market.coops={k:{name:'Ice',members:['b','c','x']}}; state.shop=null; const o=shopObjects(), f=o.find(x=>x.label==='A'), anchor=PL.farmxswap.at;
+      return o.length===2 && !!f && Math.hypot(f.at[0]-anchor[0],f.at[1]-anchor[1])<46 && o.some(x=>x.label==='Ice') && !o.some(x=>x.label==='Old'); }
+    finally{ social.shops=keep; state.shop=keepMine; market.coops=keepCoops; } });
   t('QuarX sale limit is one day of extraction and halves with each halving', ()=>{ const U=Number(UNIT); const c=clone(); postLedger(c,'mine-cap',[['quarx',20n*UNIT]],'t');
     const halves=quarxSellCapU(seamRewardU(MINABLE_U*.5))*2n===quarxSellCapU(seamRewardU(0)) && quarxSellCapU(U)===BigInt(ECONOMY.dailySeams)*UNIT;
     postLedger(c,'swap-forgex-cap',[['quarx',-BigInt(ECONOMY.dailySeams)*UNIT],['bux',UNIT]],'t'); return halves && quarxSellLeftU(c,U)===0n && quarxSellLeftU(clone(),U)===BigInt(ECONOMY.dailySeams)*UNIT; });
@@ -3313,12 +3331,13 @@ async function sendFeedback(){ const text=(($('#fb-text')||{}).value||'').trim()
   if(social.db&&social.writable){ try{ const ref=social.db.doc('feedback/'+social.me); const sn=await ref.get(); const d=sn.exists?clonePlain(sn.data()):{items:[]}; d.items=(d.items||[]).concat([item]).slice(-50); await ref.set(d); toast('Thank you. The founder will read it.'); }catch(e){ toast('Saved on this device; it could not be sent right now.'); } }
   else toast('Saved on this device. It will reach the founder when the shared world is reachable again.');
   save(); $('#fb').hidden=true; $('#fb').innerHTML=''; }
-const FUNNEL=[['passport','Passport inscribed'],['visited','Entered a territory'],['harvest','First harvest'],['trade','First trade'],['quarx','First QuarX'],['parcel','First parcel'],['home','Residence'],['build','Built something'],['vote','Voted'],['parx','Spoke in ParX'],['mission','Completed a mission'],['firstSteps','Finished first steps']];
+const FUNNEL=[['passport','Passport inscribed'],['visited','Entered a territory'],['harvest','First harvest'],['trade','First trade'],['quarx','First QuarX'],['parcel','First parcel'],['home','Residence'],['build','Built something'],['vote','Voted'],['parx','Spoke in ParX'],['shop','Opened a shop'],['sale','Sold to a citizen'],['bought','Bought from a citizen'],['mission','Completed a mission'],['firstSteps','Finished first steps']];
 function viewFounder(){
   if(!social.isOwner) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.2rem">Founder dashboard</h1><p class="lede">Only the owner of this Xland can see the dashboard.</p>${serverMode?`<div class="swap-row" style="margin:1.2rem auto 0;max-width:26rem;text-align:left"><label class="meta" for="admin-in">Founder key</label><div style="display:flex;gap:.6rem"><input class="input" id="admin-in" type="password" autocomplete="off" style="flex:1;min-width:0"><button class="btn btn-primary" data-act="admin-use">Unlock</button></div></div>`:''}</div></section>`;
   const P=social.progress||[], F=social.feedback||[], n=P.length, day=Date.now()-86400000, active=P.filter(x=>x.updatedAt>day).length, avg=F.filter(f=>f.rating).reduce((a,f)=>a+f.rating,0)/(F.filter(f=>f.rating).length||1);
   return `<section class="page fade-in"><div class="page-head"><div><h1 class="display">Founder dashboard</h1><p class="lede">How real testers move through Xland, and what they tell you. Visible only to you.</p></div><span class="sim-badge">Alpha ${BUILD}</span></div>
     <dl class="kv"><dt>Testers</dt><dd>${n}</dd><dt>Active in the last day</dt><dd>${active}</dd><dt>Feedback</dt><dd>${F.length}${F.some(f=>f.rating)?` · average rating ${avg.toFixed(1)} of 5`:''}</dd></dl>
+    ${serverMode?`<h2 class="display eh">The world</h2><div class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
     <h2 class="display eh">Journey funnel</h2><div class="funnel">${FUNNEL.map(([k,l])=>{ const c=P.filter(x=>x.milestones&&x.milestones[k]).length, pct=n?Math.round(c/n*100):0; return `<div class="fn-row"><span>${l}</span><i><b style="width:${pct}%"></b></i><em>${c} · ${pct}%</em></div>`; }).join('')}</div>
     <h2 class="display eh">Feedback</h2>${F.length?`<ol class="ppx">${F.slice(0,60).map(f=>`<li><div class="ppx-h"><b dir="auto">${esc(f.handle||'A tester')}</b>${f.rating?`<span class="meta">${'◆'.repeat(f.rating)}${'◇'.repeat(5-f.rating)}</span>`:''}<span class="meta">${esc(f.route)} · ${esc(f.identity||'')} · ${esc(f.build||'')} · ${new Date(f.at).toLocaleString()}</span></div><p dir="auto">${esc(f.text)}</p></li>`).join('')}</ol>`:'<p class="meta">No feedback yet.</p>'}
     <h2 class="display eh">Testers</h2><div class="tbl"><table><thead><tr><th>Tester</th><th>State</th><th>Steps</th><th>Last seen</th><th>Where</th></tr></thead><tbody>${P.sort((a,b)=>b.updatedAt-a.updatedAt).map(x=>`<tr><td dir="auto">${esc(x.handle||'A tester')}</td><td>${esc(x.identity||'')}</td><td>${x.milestones?Object.values(x.milestones).filter(Boolean).length:0} of ${FUNNEL.length}</td><td>${fmtDate(x.updatedAt)}</td><td>${esc(x.route||'')}</td></tr>`).join('')||'<tr><td colspan="5" class="meta">No testers yet.</td></tr>'}</tbody></table></div>
@@ -3374,8 +3393,20 @@ function mountScene(){
   requestAnimationFrame(()=>{ const c=document.getElementById('scard'); XW.setInset(c&&!c.hidden&&small?c.offsetHeight+16:0); });
 }
 
+/* Every open citizen shop stands on the shared map near its market: a stall with a coloured awning, one per cooperative. */
+const SHOP_TINT = { xetropolitan:[.85,.62,.3], farmx:[.55,.72,.3], ximberland:[.3,.62,.42], xalp:[.62,.7,.82], tundrax:[.78,.86,.92], ixeland:[.55,.78,.95], xahara:[.92,.7,.38] };
+const hashN = str => { let h=2166136261; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0)/4294967296; };
+function shopObjects(){ const now=Date.now(), out=[], seen=new Set(), per={};
+  const all=Object.entries(social.shops||{}).filter(([id,sh])=>sh && sh.openUntil>now && SHOP_TERR[sh.t||'xetropolitan'] && !SHOP_TERR[sh.t||'xetropolitan'].soon);
+  if(state.shop && social.me && !all.some(([id])=>id===social.me)) all.push([social.me,{name:state.shop.name, t:shopT(state), coop:state.shop.coop||null}]);
+  all.sort((a,b)=>(a[1].at||0)-(b[1].at||0)).forEach(([id,sh])=>{ const t=sh.t||'xetropolitan', c=SHOP_TERR[t], key=sh.coop?'coop-'+sh.coop:id; if(seen.has(key)) return; seen.add(key);
+    if((per[t]=(per[t]||0)+1)>24) return; const anchor=(PL[c.market||c.place]||{}).at; if(!anchor) return;
+    const h=hashN(key), ang=h*Math.PI*2, rad=30+((h*997)%1)*15, mine=id===social.me||(sh.coop&&state.shop&&state.shop.coop===sh.coop);
+    const name=sh.coop&&market.coops[sh.coop]?market.coops[sh.coop].name:sh.name;
+    out.push({id:'s-'+key.replace(/[^A-Za-z0-9_-]/g,''), kind:'shop', label:mine?`Your ${c.kind.toLowerCase()} · ${name}`:name, region:t, at:[anchor[0]+Math.cos(ang)*rad, anchor[1]+Math.sin(ang)*rad], place:c.market||c.place, rot:h*3, tint:SHOP_TINT[t], mine}); });
+  return out; }
 function userObjects(){
-  const list=[];
+  const list=shopObjects();
   (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; list.push({parcel:pp.id, id:'parcel-'+pp.id, kind:pp.building==='homax'?'homax':'parcel', label:pp.building==='homax'?`Your Homax ${pp.id}`:`Your parcel ${pp.id}`, region:pp.t, at:pp.at, place:''}); });
   state.buildings.forEach(b=>{ const pp=PBY[b.parcel]; list.push({id:'bld-'+b.parcel, kind:'farmstead', label:`Farmstead ${b.parcel}`, region:pp.t, at:[pp.at[0]+6,pp.at[1]+4], place:'fields'}); });
   state.projects.filter(x=>x.status==='active').forEach(x=>{ const pp=PBY[x.parcel], f=Math.min(1,(Date.now()-x.start)/(x.end-x.start)); list.push({parcel:x.parcel, id:'proj-'+x.parcel, kind:'scaffold', h:.4+f*1.6, label:'Farmstead under construction', region:pp.t, at:[pp.at[0]+6,pp.at[1]+4], place:''}); });
@@ -4111,6 +4142,7 @@ document.addEventListener('touchend', e=>{ if(!tapStart) return; const t=tapStar
 let lastTouchSelect=0;
 document.addEventListener('click', e=>{
   if(Date.now()-lastTouchSelect<600 && e.target.closest&&e.target.closest('button.tl[data-region], #rail button[data-id], .rlist button[data-id]')) return;
+  const shopEl = e.target.closest('button.pl.shop'); if(shopEl && shopEl.dataset.place){ location.hash='#/place/'+shopEl.dataset.place; return; }
   const plotEl = e.target.closest('button.pl.plot'); if(plotEl && plotEl.dataset.parcel){ selectParcel(plotEl.dataset.parcel); return; }
   const mineEl = e.target.closest('button.pl.mine'); if(mineEl){ if(mineEl.dataset.parcel) location.hash='#/parcel/'+mineEl.dataset.parcel; else if(mineEl.dataset.place) selectPlace(mineEl.dataset.place); return; }
   const placeEl = e.target.closest('button.pl[data-place]'); if(placeEl && placeEl.dataset.place){ selectPlace(placeEl.dataset.place); return; }
@@ -4403,7 +4435,7 @@ setInterval(()=>{
     const o=state[k]; if(o && Date.now()>=o.end && !state.notified[o.op]){ state.notified[o.op]=1; toast(msg); } });
 },1000);
 /* Test hook for the local test scripts only (test/*.cjs); absent on xland.world. */
-if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT };
+if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT, XW };
 })();
 </script>
 </body>

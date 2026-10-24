@@ -267,3 +267,7 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .pop-card h2{font-family:var(--font-display);font-weight:400;font-size:1.35rem;margin:0 0 .3rem}
 .tshops{margin-top:2.2rem;padding-top:1.6rem;border-top:1px solid var(--brass-hairline)}
 .tshops .shop-head{margin-top:1.8rem}
+
+/* ===== r48 Shops on the living map ===== */
+.pl.plot.shop{color:#FBE7B0;border-color:rgba(210,165,90,.55);background:rgba(26,18,5,.78)}
+.pl.plot.shop i{background:#D2A55A;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 6px rgba(251,231,176,.6)}
