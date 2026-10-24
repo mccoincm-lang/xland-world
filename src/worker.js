@@ -21,7 +21,9 @@ const INTERESTS = ['explore','build','farm','govern','shop','partner'];
    - private: state (own only), progress and feedback (own write; only the founder reads them all)
    - posts: the founder may also rewrite any posts document (moderation)
    - shops: public, self-write (a citizen's shopfront and the goods they list). Orders are not documents: the server
-     keeps the order book itself (xl_orders) so a listing can never be oversold and an order settles only once. */
+     keeps the order book itself (xl_orders) so a listing can never be oversold and an order settles only once.
+     Listed goods are reserved in the merchant's wallet, so an order settles at once ('filled'); 'paid' orders are
+     only left from the alpha's first market and are still filled or declined by the merchant's page. */
 const PUBLIC = ['citizens','posts','gov','ballots','claims','shops'];
 const FOUNDER_READ = ['progress','feedback'];
 const SELF_WRITE = ['citizens','posts','gov','ballots','progress','feedback','state','shops'];
@@ -274,7 +276,7 @@ async function api(req, env, url){
     const total = qty * unit, fee = Math.floor(total * feeBps / 10000);
     // One statement: the order is written only if the listing still has enough stock, so two buyers can never oversell it.
     const r = await env.DB.prepare(`INSERT OR IGNORE INTO xl_orders (oid, buyer, seller, ref, asset, qty, price, total, fee, status, created, updated, meta)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'paid', ?10, ?10, ?12
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'filled', ?10, ?10, ?12
       WHERE (SELECT COALESCE(SUM(qty), 0) FROM xl_orders WHERE seller = ?3 AND ref = ?4 AND status IN ('paid', 'filled')) + ?6 <= ?11`)
       .bind(oid, me.uid, seller, ref, item.asset, qty, unit, total, fee, now, Math.max(0, Math.floor(Number(item.qty) || 0)), meta).run();
     if(!r.meta.changes){
@@ -282,6 +284,8 @@ async function api(req, env, url){
       if(dup && dup.buyer === me.uid) return json({ok:true, order: orderOut(dup)});
       return fail(409, 'Not enough of this item is left.');
     }
+    // Settled at once from the merchant's reserved stock: the buyer receives now, the merchant's wallet settles on their next visit.
+    await addWorld(env, 'market_sales', 1); await addWorld(env, 'market_volume', total); await addWorld(env, 'market_fees', fee);
     return json({ok:true, order: orderOut(await env.DB.prepare('SELECT * FROM xl_orders WHERE oid = ?1').bind(oid).first())});
   }
 

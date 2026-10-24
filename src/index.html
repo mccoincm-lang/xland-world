@@ -1482,7 +1482,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r48';
+const BUILD = 'r49';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -3472,7 +3472,7 @@ const ORDER_TEXT = { paid:['Waiting for the merchant','pending'], filled:['Deliv
 function orderRow(o, side){ const sh=social.shops[side==='buy'?o.seller:o.buyer], who=side==='buy'?(sh&&sh.name||'A citizen shop'):(citizenName(social.citizens.find(c=>c.id===o.buyer))), st=ORDER_TEXT[o.status]||[o.status,'pending'];
   const canCancel=side==='buy' && o.status==='paid' && Date.now()-o.created>=SIM.marketCancelHours*3600000;
   return `<tr><td dir="auto">${esc(who)}</td><td dir="auto">${esc(goodsLabel(o))}</td><td>${fmtAmt(BigInt(o.total))} BuX</td><td><span class="ord ord-${st[1]}">${st[0]}</span>${canCancel?` <button class="link link-muted" data-act="mkt-cancel" data-id="${esc(o.oid)}">Cancel</button>`:''}</td><td class="meta upd">${fmtDate(o.updated)}</td></tr>`; }
-function ordersTable(list, side){ return list.length?`<div class="tbl otbl"><table><thead><tr><th>${side==='buy'?'Shop':'Buyer'}</th><th>Goods</th><th>Total</th><th>Status</th><th class="upd">Updated</th></tr></thead><tbody>${list.slice(0,20).map(o=>orderRow(o,side)).join('')}</tbody></table></div>`:`<p class="meta">${side==='buy'?'No orders yet.':'No sales yet. Orders arrive here and settle by themselves while Xland is open.'}</p>`; }
+function ordersTable(list, side){ return list.length?`<div class="tbl otbl"><table><thead><tr><th>${side==='buy'?'Shop':'Buyer'}</th><th>Goods</th><th>Total</th><th>Status</th><th class="upd">Updated</th></tr></thead><tbody>${list.slice(0,20).map(o=>orderRow(o,side)).join('')}</tbody></table></div>`:`<p class="meta">${side==='buy'?'No orders yet.':'No sales yet. Each sale reaches your wallet the next time you open Xland.'}</p>`; }
 function shopsOffline(){ return `<div class="lawcard"><b>The market needs the shared world</b><p>Shops trade between real citizens on xland.world, and the shared world cannot be reached from this view. Reload the page in a moment.</p></div>`; }
 function shopTally(t){ return Object.values(social.shops||{}).filter(sh=>sh&&(sh.t||'xetropolitan')===t).length; }
 /* The build form for a territory: what the shop may sell, what it costs, and the checks before building. */
@@ -3512,6 +3512,7 @@ function shopManageHTML(){ const s=state, t=shopT(s), c=SHOP_TERR[t], open=shopI
       <button class="btn btn-primary" data-act="mkt-list" ${(s.listings||[]).length>=SIM.maxListings?'disabled':''}>List goods</button></div>
       <p class="meta">You can sell only what you produced yourself, so shops stay with makers rather than middlemen. Listed goods are reserved until they sell or you take them down. ${c.feeBps?`${c.feeBps/100}% of each sale goes to the ${esc(R[t].name)} treasury.`:`${esc(R[t].name)} is tax-free: no market fee.`}<span class="tag tag-prov">Provisional</span></p>
       ${c.assets.includes('quarx')?`<p class="meta">${quarxCapText()}</p>`:''}`:''}
+    <div id="law-out"></div>
     <div id="shop-sales">${salesHTML()}</div>`; }
 function shelfRows(){ const s=state, rows=(s.listings||[]).map(l=>{ const left=l.asset==='item'?1n:listingLeft(s,l); return `<tr><td><b dir="auto">${l.asset==='item'?esc(l.title):symOf(l.asset)}</b></td><td>${l.asset==='item'?esc(l.kind):`${left} of ${l.qty}`}</td><td>${fmtAmt(BigInt(l.price))} BuX</td><td><button class="link link-muted" data-act="mkt-unlist" data-id="${esc(l.ref)}">Take down</button></td></tr>`; }).join('');
   const items=(s.listings||[]).some(l=>l.asset==='item');
@@ -3541,7 +3542,7 @@ function shopCardsHTML(t){ if(t==='ixeland') return coopCardsHTML(); const now=D
       :`<li><span class="shelf-g"><b>${symOf(it.asset)}</b><span class="meta">${it.left} left · ${fmtAmt(BigInt(it.price))} BuX each</span></span>
       <span class="shelf-buy"><input class="input" id="mq-${esc(it.ref)}" type="number" min="1" max="${it.left}" step="1" value="1" inputmode="numeric" aria-label="Quantity of ${symOf(it.asset)}"><button class="btn btn-primary" data-act="mkt-buy" data-seller="${esc(id)}" data-id="${esc(it.ref)}">Buy</button></span></li>`).join('')}</ul></div>`;
   return `${market.err?`<div class="lawcard"><b>Market unreachable</b><p>${esc(market.err)}</p></div>`:''}<div class="shop-grid">${shops.length?shops.map(card).join(''):`<p class="meta">No ${esc(c.kind.toLowerCase())}s are open in ${esc(R[t].name)} right now.</p>`}</div>`; }
-const escrowNote = () => `You pay into escrow; the merchant's shop delivers by itself while they have Xland open, and their BuX is released only on delivery. An order not filled within ${SIM.marketCancelHours} hours can be cancelled for a full refund.`;
+const escrowNote = () => `Goods come from the merchant's reserved stock, so they arrive at once. The merchant's BuX settles the next time they open Xland.`;
 /* The shop section added to each territory's market place (FarmXSwap, the Green exchange, the quarry, ...). */
 function territoryShopsHTML(t){ const c=SHOP_TERR[t]; if(!c || t==='xetropolitan') return '';
   const head=`<div class="tshops"><h2 class="act-h">${esc(c.kind)}s of ${esc(R[t].name)}</h2>`;
@@ -4051,15 +4052,16 @@ document.addEventListener('click', e=>{
     case 'mkt-list': { if(!state.shop||!here(shopT(state))) return; const asset=($('#ml-asset')||{}).value, qty=Number(($('#ml-qty')||{}).value), price=parseAmt(($('#ml-price')||{}).value);
       const r=listGoods(state,asset,qty,price===null?0n:price,opId('l')); if(!r.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot list</b><p>${esc(r.why)}</p></div>`; return; }
       save(); render(); publishShop(); toast(`Listed ${qty} ${symOf(asset)} in ${state.shop.name}.`); break; }
-    case 'mkt-unlist': { const pending=market.selling.some(o=>o.ref===id&&o.status==='paid'); const r=unlistGoods(state,id,pending);
-      if(!r.ok){ toast(r.why); if(pending) marketSync(); return; } save(); render(); publishShop(); toast('Taken down; the goods are back in your wallet.'); break; }
+    case 'mkt-unlist': { if(!state.shop) return; b.disabled=true; (async()=>{ await marketSync(); if(serverBE && market.err){ toast('The market cannot be reached right now. Try again in a moment.'); render(); return; }   // settle every sale first
+        const pending=market.selling.some(o=>o.ref===id&&o.status==='paid'); const r=unlistGoods(state,id,pending);
+        if(!r.ok){ toast(r.why); render(); return; } save(); render(); publishShop(); toast('Taken down; what was left is back in your wallet.'); })(); break; }
     case 'mkt-buy': { const seller=b.dataset.seller, sh=social.shops[seller], it=sh&&(sh.items||[]).find(x=>x.ref===id); if(!it||seller===social.me||!serverBE) return; if(!here(sh.t||'xetropolitan')){ toast(`Be in ${R[sh.t||'xetropolitan'].name} to buy here.`); return; }
       const inp=document.getElementById('mq-'+id), qty=Math.floor(Number(inp&&inp.value||1)); if(!(qty>=1&&qty<=it.left)){ toast(`Choose a quantity from 1 to ${it.left}.`); return; }
       const total=BigInt(qty)*BigInt(it.price), oid=opId('o'); if(BigInt(state.bal.bux)<total){ toast('Not enough BuX.'); return; }
       if(!marketPay(state,{oid,total:total.toString(),qty,asset:it.asset},sh.name)){ toast('Not enough BuX.'); return; } save(); b.disabled=true;
       (async()=>{ try{ const r=await serverBE.call('POST',`/market/order?oid=${encodeURIComponent(oid)}&seller=${encodeURIComponent(seller)}&ref=${encodeURIComponent(id)}&qty=${qty}&price=${it.price}`);
           market.buying.unshift(r.order); emit('ORDER_PLACED',{oid}); if(state.ledger.filter(e=>e.op.startsWith('mkt-pay-')).length===1) chron('Market','First order in Plaxa',`You ordered ${qty} ${symOf(it.asset)} from ${sh.name}.`,'xetropolitan','ordinary');
-          toast(`Ordered ${it.asset==='item'?(it.title||'a rare asset'):qty+' '+symOf(it.asset)} from ${sh.name}. Your BuX waits in escrow until the shop delivers.`); }
+          toast(`Bought ${it.asset==='item'?(it.title||'a rare asset'):qty+' '+symOf(it.asset)} from ${sh.name}.`); }
         catch(e){ marketRefund(state,{oid,total:total.toString(),status:'cancelled'}); toast(e.message||'The order did not go through. Your BuX is back.'); }
         save(); render(); marketSync(); })(); break; }
     case 'mkt-cancel': { if(!serverBE) return; (async()=>{ try{ const r=await serverBE.call('POST','/market/cancel?oid='+encodeURIComponent(id)); marketRefund(state,r.order); save(); toast('Order cancelled; your BuX is back.'); }

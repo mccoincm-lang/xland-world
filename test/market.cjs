@@ -29,7 +29,7 @@ const toastOf = (p) => p.evaluate(() => (document.querySelector("#toast") || {})
 (async () => {
   const b = await chromium.launch({ executablePath: "/opt/google/chrome/chrome", args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const a = await citizen(b, "Darya", { width: 1440, height: 900 });
-  await a.evaluate(() => { const x = window.__xl; x.postLedger(x.state, "mine-test", [["quarx", 4n * x.UNIT]], "test seam"); x.postLedger(x.state, "prod-test", [["vegiex", 20n * x.UNIT]], "test harvest"); x.save(); });
+  await a.evaluate(() => { const x = window.__xl; x.postLedger(x.state, "mine-test", [["quarx", 6n * x.UNIT]], "test seam"); x.postLedger(x.state, "prod-test", [["vegiex", 20n * x.UNIT]], "test harvest"); x.save(); });
   await hash(a, "#/place/shoppex", 1500); await a.screenshot({ path: `${out}/mk-a-lease.png`, fullPage: true });
   await tap(a, '[data-act="rent"][data-id="shoppex"]'); await a.waitForTimeout(800);
   await a.screenshot({ path: `${out}/mk-a-build.png`, fullPage: true });
