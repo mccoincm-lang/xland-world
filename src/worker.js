@@ -239,6 +239,14 @@ async function api(req, env, url){
     return json({ok:true, id, name, members: results.length, memberIds: results.map(r => r.uid), share});
   }
 
+  if(p === '/api/market/prices' && req.method === 'GET'){
+    // Price discovery between citizens: volume-weighted price per unit over the last 7 days, from settled orders.
+    const since = now - 7 * 86400000;
+    const { results } = await env.DB.prepare("SELECT asset, SUM(qty) AS qty, SUM(total) AS total, COUNT(*) AS n, MIN(price) AS lo, MAX(price) AS hi FROM xl_orders WHERE status = 'filled' AND updated >= ?1 AND asset != 'item' GROUP BY asset").bind(since).all();
+    const prices = {}; results.forEach(r => { prices[r.asset] = { qty: Number(r.qty), avg: Math.round(Number(r.total) / Math.max(1, Number(r.qty))), lo: Number(r.lo), hi: Number(r.hi), sales: Number(r.n) }; });
+    return json({ok:true, now, days: 7, prices});
+  }
+
   if(p === '/api/market/orders' && req.method === 'GET'){
     const rows = async (who) => (await env.DB.prepare(`SELECT * FROM xl_orders WHERE ${who} = ?1 ORDER BY updated DESC LIMIT 100`).bind(me.uid).all()).results.map(orderOut);
     return json({ok:true, now, buying: await rows('buyer'), selling: await rows('seller')});

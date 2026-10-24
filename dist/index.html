@@ -1760,7 +1760,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r50';
+const BUILD = 'r51';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -3843,12 +3843,20 @@ function actShop(){
 function actPlaxa(){
   const g=presence('xetropolitan'); if(g) return g;
   if(!social.db || !serverMode) return `<h2 class="act-h">The Plaxa market</h2>${shopsOffline()}`;
+  if(!market.pricesAt || Date.now()-market.pricesAt>60000){ market.pricesAt=Date.now(); refreshPrices().then(()=>{ if(parse().arg==='plaxa') refreshMarketView(document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)); }); }
   return `<h2 class="act-h">The Plaxa market</h2><p class="meta">Shops of real citizens in Xetropolitan. ${escrowNote()}</p>
     ${shopCardsHTML('xetropolitan')}
     <h3 style="margin:1.6rem 0 .5rem">Your orders</h3><div id="mkt-orders">${ordersTable(market.buying,'buy')}</div>
     <p style="margin-top:1rem"><a class="link" href="#/place/shoppex">${shopT(state)==='xetropolitan'?'Manage your shop':state.shop?'Your shop':'Open a shop of your own'}</a></p>
+    ${priceIndexHTML()}
     <h3 style="margin:1.6rem 0 .5rem">Shops across Xland</h3><div class="tbl"><table><thead><tr><th>Territory</th><th>Kind</th><th>Sells</th><th>Shopfront</th><th>Fee</th></tr></thead><tbody>
     ${Object.entries(SHOP_TERR).map(([t,c])=>`<tr><td><a class="link" href="#/place/${c.market||c.place}">${esc(R[t].name)}</a></td><td>${esc(c.kind)}</td><td>${c.soon?'Next step':c.assets.map(symOf).join(', ')}</td><td>${c.soon?'—':c.coop?`${c.quarx} QuarX, shared by up to ${c.coop.max}`:c.quarx+' QuarX'}</td><td>${c.soon?'—':c.feeBps?c.feeBps/100+'%':'None'}</td></tr>`).join('')}</tbody></table></div>`; }
+/* What citizens actually pay each other, next to the simulated market rates. */
+async function refreshPrices(){ if(!serverBE) return; try{ market.prices=(await serverBE.call('GET','/market/prices')).prices||{}; market.pricesAt=Date.now(); }catch(e){} }
+function priceIndexHTML(){ const P=market.prices; if(!P) return '';
+  const rows=MKT_ASSETS.map(a=>{ const x=P[a]; return `<tr><td><b>${symOf(a)}</b></td><td>${x?`${fmtAmt(BigInt(x.avg))} BuX`:'—'}</td><td>${x?`${fmtAmt(BigInt(x.lo))} – ${fmtAmt(BigInt(x.hi))}`:'—'}</td><td>${x?x.qty.toLocaleString('en-US'):'0'}</td><td>${SIM.rates[a]} BuX</td></tr>`; }).join('');
+  return `<h3 style="margin:1.6rem 0 .5rem">Citizen prices, last 7 days</h3><div class="tbl"><table><thead><tr><th>Goods</th><th>Average</th><th>Range</th><th>Units sold</th><th>Market rate</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="meta">What citizens paid each other in every shop, stall and cooperative, weighted by volume. The market rate is the simulated rate at FarmXSwap and Forgex.</p>`; }
 function worldMarketHTML(){ if(!world||!world.market) return ''; const m=world.market;
   return `<div class="world-econ"><h3>Citizen shops</h3><dl class="kv"><dt>Shopfronts built</dt><dd>${m.shopfronts.toLocaleString('en-US')}</dd><dt>QuarX consumed by shopfronts</dt><dd>${fmtU(m.quarxConsumed)} QuarX, out of circulation for good</dd><dt>Sales between citizens</dt><dd>${m.sales.toLocaleString('en-US')} worth ${fmtU(m.volume)} BuX</dd><dt>Fees to territory treasuries</dt><dd>${fmtU(m.fees)} BuX</dd><dt>QuarX sale limit</dt><dd>${fmtAmt(quarxSellCapU())} QuarX per citizen per day, halving with each halving</dd></dl></div>`; }
 /* ---------------- Population: 21,000,000 citizens, opened in stages ----------------
