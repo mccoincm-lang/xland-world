@@ -80,9 +80,14 @@ const SCHEMA = [
    BuX: 1 BuX = 1 USD, minted only against a stablecoin deposit that stays locked in the BanX reserve for good.
    The page mirrors these rules (ECONOMY in index.html) for display and for its rule tests. */
 const UNIT = 10000;
-const ECON = { quarxCap: 1e9, genesis: 2.5e8, seamReward: 1, seamSecsMin: 60, seamSecsMax: 120, dailySeams: 5, targetMiners: 8, sandboxBuX: 1000 };
-/* Citizen shops (provisional, alpha). Each open territory has its own kind of shop: the QuarX its shopfront consumes for
-   good, the goods it may sell, and the market fee to the territory treasury (none in tax-free lands). A buyer may cancel an
+/* r54 (founder decision 25 Oct 2026): difficulty targets a fixed number of seams a day across Xland, not a number of miners.
+   Seams take longer only once more than about 267 citizens mine, so total issuance holds near 256,673 seams a day and the
+   first epoch lasts about four years, like Bitcoin. The old target of 8 miners capped Xland at 7,680 QuarX a day. */
+const ECON = { quarxCap: 1e9, genesis: 2.5e8, seamReward: 1, seamSecsMin: 60, seamSecsMax: 120, seamSecsBase: 90, dailySeams: 5, targetSeamsPerDay: 256673, sandboxBuX: 1000 };
+ECON.targetMiners = ECON.targetSeamsPerDay * ECON.seamSecsBase / 86400;   // ≈ 267 miners at full speed
+/* Citizen shops. Each open territory has its own kind of shop: the QuarX its shopfront consumes for good, stated since r54
+   (founder decision) as a multiple of the current seam reward so it halves with every halving (5 QuarX in epoch 1, 2.5 in
+   epoch 2 for Xetropolitan), the goods it may sell, and the market fee to the territory treasury (none in tax-free lands). A buyer may cancel an
    order the merchant has not filled after 24 hours. The page mirrors this table (SHOP_TERR in index.html). */
 const SHOPS = {
   xetropolitan: { quarx: 5, feeBps: 100, assets: ['vegiex', 'livestox', 'quarx'] },
@@ -103,6 +108,12 @@ function quarxEpoch(mined){ if(mined >= MINABLE) return Infinity; return Math.fl
 function seamReward(mined){ const e = quarxEpoch(mined); if(!isFinite(e)) return 0; return Math.max(1, Math.floor(ECON.seamReward * UNIT / 2 ** e)); }
 function nextHalvingAt(mined){ const e = quarxEpoch(mined); return isFinite(e) ? Math.ceil(MINABLE * (1 - 2 ** -(e + 1))) : MINABLE; }
 function difficulty(miners){ return Math.max(1, miners / ECON.targetMiners); }
+/* Costs in QuarX are multiples of the current seam reward (r54): k × reward, in base units. */
+const quarxCost = (k, mined) => Math.floor(k * seamReward(mined));
+function shopCost(t, mined){ const c = SHOPS[t]; return c.coop ? Math.floor(quarxCost(c.quarx, mined) / c.coop.max) : quarxCost(c.quarx, mined); }
+/* Anti-flip fee on a resold item: 20% within 30 days of acquiring it, falling to zero by day 180 (SIM.flip in index.html). */
+const FLIP = { maxBps: 2000, fullDays: 30, zeroDays: 180 };
+function flipFeeBps(heldMs){ const d = heldMs / 86400000; if(d <= FLIP.fullDays) return FLIP.maxBps; if(d >= FLIP.zeroDays) return 0; return Math.round(FLIP.maxBps * (FLIP.zeroDays - d) / (FLIP.zeroDays - FLIP.fullDays)); }
 const dayStart = t => { const d = new Date(t); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
 async function worldCounter(env, k){ const r = await env.DB.prepare('SELECT n FROM xl_world WHERE k = ?1').bind(k).first(); return r ? Number(r.n) : 0; }
 async function addWorld(env, k, d){ await env.DB.prepare('INSERT INTO xl_world (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = n + excluded.n').bind(k, d).run(); }
@@ -112,10 +123,11 @@ async function worldReport(env, now){
   return {
     unit: UNIT,
     quarx: { cap: ECON.quarxCap * UNIT, genesis: ECON.genesis * UNIT, minable: MINABLE, mined, epoch: quarxEpoch(mined) + 1, reward: seamReward(mined),
-      nextHalvingAt: nextHalvingAt(mined), miners24h: miners, difficulty: difficulty(miners), dailySeams: ECON.dailySeams },
+      nextHalvingAt: nextHalvingAt(mined), miners24h: miners, difficulty: difficulty(miners), dailySeams: ECON.dailySeams, targetSeamsPerDay: ECON.targetSeamsPerDay, targetMiners: ECON.targetMiners },
     bux: { minted: await worldCounter(env, 'bux_minted'), reserve: await worldCounter(env, 'bux_reserve') },
     market: { shopfronts: await worldCounter(env, 'shopfronts'), quarxConsumed: await worldCounter(env, 'quarx_consumed'), sales: await worldCounter(env, 'market_sales'),
-      volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), shops: SHOPS }
+      volume: await worldCounter(env, 'market_volume'), fees: await worldCounter(env, 'market_fees'), shops: SHOPS,
+        shopCosts: Object.fromEntries(Object.keys(SHOPS).map(t => [t, shopCost(t, mined)])), buildCosts: Object.fromEntries(Object.entries(BUILDS).map(([k, d]) => [k, quarxCost(d.recipe.quarx, mined)])) }
   };
 }
 const orderOut = o => ({ meta: o.meta ? JSON.parse(o.meta) : null, oid:o.oid, buyer:o.buyer, seller:o.seller, ref:o.ref, asset:o.asset, qty:Number(o.qty), price:Number(o.price), total:Number(o.total), fee:Number(o.fee), status:o.status, created:Number(o.created), updated:Number(o.updated) });
@@ -165,6 +177,29 @@ async function quarxSoldToday(env, uid, now){
   let sold = 0n; results.forEach(r => { const d = JSON.parse(r.data); if(r.op.startsWith('swap-') && d.d && B(d.d.quarx) < 0n) sold -= B(d.d.quarx); if(r.op.startsWith('mkt-list-') && d.asset === 'quarx') sold += B(d.qty) || 0n; });
   return sold;
 }
+/* r54: a shop sells only what its citizen produced (mined, harvested or carried over from the alpha), less what they already
+   sold at the exchanges or listed: bought goods cannot be relisted. Mirrors listableUnits() in index.html. */
+async function listableQty(env, uid, a){
+  const { results } = await env.DB.prepare("SELECT op, data FROM xl_ledger WHERE uid = ?1 AND (op LIKE 'mine-%' OR op LIKE 'prod-%' OR op LIKE 'swap-%' OR op LIKE 'mkt-list-%' OR op LIKE 'mkt-unlist-%' OR op = 'import-alpha')").bind(uid).all();
+  let n = 0n;
+  for(const r of results){ const d = JSON.parse(r.data);
+    if(r.op === 'import-alpha'){ n += (B((d.bal || {})[a]) || 0n) + (B((d.locked || {})[a]) || 0n); continue; }
+    if(r.op.startsWith('mkt-list-') || r.op.startsWith('mkt-unlist-')){ if(d.asset === a) n += (r.op.startsWith('mkt-list-') ? -1n : 1n) * (B(d.qty) || 0n); continue; }
+    const v = d.d ? B(d.d[a]) || 0n : 0n;
+    if(r.op.startsWith('swap-')){ if(v < 0n) n += v; } else if(v > 0n) n += v; }
+  return n;
+}
+/* r54: presale QuarX may build at once but is tradable only after 12 months (SIM.presale.releaseMonths). Construction and
+   shopfronts consume it first, as the page's useVested() does. */
+const PRESALE_LOCK_MS = 12 * 30 * 86400000;
+async function vestedQuarx(env, uid, now){
+  const { results } = await env.DB.prepare("SELECT op, data, at FROM xl_ledger WHERE uid = ?1 AND (op LIKE 'presale-%' OR op LIKE 'shop-build%' OR op LIKE 'build-consume-%' OR op LIKE 'proj-%-consume-quarx')").bind(uid).all();
+  let v = 0n, used = 0n;
+  for(const r of results){ const d = JSON.parse(r.data);
+    if(r.op.startsWith('presale-')){ if(now - Number(r.at) < PRESALE_LOCK_MS) v += B(d.d.quarx) || 0n; }
+    else if(d.asset === 'quarx') used += B(d.qty) || 0n; }
+  return v > used ? v - used : 0n;
+}
 async function sandboxMint(env, uid, now){
   if(await opExists(env, uid, 'import-alpha')) return { ok: true, dup: true };   // carried over with the alpha balances
   const amount = ECON.sandboxBuX * UNIT;
@@ -181,6 +216,9 @@ async function walletPropose(env, uid, body, now){
     const a = body.asset, q = B(body.qty);
     if(!WALLET_ASSETS.includes(a) || q === null || q <= 0n) return { ok: false, why: 'Invalid reservation.' };
     if(BUILD_PREFIXES.some(p => op.startsWith(p))) return { ok: false, why: 'Construction is timed by the server.' };   // r53: build sites reserve, release and consume through /api/build/*
+    if(op.startsWith('mkt-list-') && body.lk === 'LOCK'){
+      if(await listableQty(env, uid, a) < q) return { ok: false, why: 'A shop sells only what you produced yourself. Bought goods cannot be resold.' };
+      if(a === 'quarx'){ const { w } = await walletGet(env, uid); if(BigInt(w.bal.quarx || '0') - await vestedQuarx(env, uid, now) < q) return { ok: false, why: 'Presale QuarX becomes tradable 12 months after the presale.' }; } }
     if(op.startsWith('mkt-list-') && a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) + q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' }; }
     const data = { lk: body.lk, asset: a, qty: q.toString() };
     if(body.lk === 'LOCK') return walletApply(env, uid, op, { [a]: -q }, { [a]: q }, data);
@@ -198,7 +236,8 @@ async function walletPropose(env, uid, body, now){
     if(!VENUES[venue] || goods.length !== 1 || !VENUES[venue].includes(goods[0])) return { ok: false, why: 'This market does not trade that.' };
     const a = goods[0], q = d[a], value = (q < 0n ? -q : q) * BigInt(RATES[a]);
     if(q < 0n){ if(bux > value) return { ok: false, why: 'The price is above the market rate.' };
-      if(a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) - q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' }; } }
+      if(a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) - q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' };
+        const { w } = await walletGet(env, uid); if(BigInt(w.bal.quarx || '0') - await vestedQuarx(env, uid, now) < -q) return { ok: false, why: 'Presale QuarX becomes tradable 12 months after the presale.' }; } }
     else if(-bux < value) return { ok: false, why: 'The price is below the market rate.' };
     return walletApply(env, uid, op, d, null, data);
   }
@@ -248,8 +287,10 @@ async function buildStart(env, uid, def, key, parcel, name, now){
   if(D.once && await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND def = ?2 AND status IN ('active', 'committed', 'complete')").bind(uid, def).first()) return { s: 409, why: 'You already have one of these.' };
   if(D.law && !(await govLaws(env, now)).laws.some(l => l.id === D.law && l.state === 'ACTIVE')) return { s: 403, why: 'Needs a passed motion at CompleX.' };
   const reserved = {}, lockOp = D.opLock(key), unlockOp = D.opUnlock(key), done = [];
+  const mined = await worldCounter(env, 'quarx_mined');
   for(const [a, n] of Object.entries(D.recipe)){
-    const q = BigInt(n * UNIT), r = await walletApply(env, uid, lockOp(a), { [a]: -q }, { [a]: q }, { lk: 'LOCK', asset: a, qty: q.toString(), src: 'build', key });
+    // r54: QuarX costs are multiples of the seam reward
+    const q = BigInt(a === 'quarx' ? quarxCost(n, mined) : n * UNIT), r = await walletApply(env, uid, lockOp(a), { [a]: -q }, { [a]: q }, { lk: 'LOCK', asset: a, qty: q.toString(), src: 'build', key });
     if(!r.ok){ for(const [b, qb] of done) await walletApply(env, uid, unlockOp(b), { [b]: qb }, { [b]: -qb }, { lk: 'UNLOCK', asset: b, qty: qb.toString(), src: 'build', key }); return { s: 409, why: r.why }; }
     done.push([a, q]); reserved[a] = q.toString();
   }
@@ -560,7 +601,7 @@ async function api(req, env, url){
     if(!cfg) return fail(400, 'Shops cannot be built in this territory yet.');
     if(cfg.coop) return fail(400, 'In Ixeland, found or join a cooperative.');
     if(cfg.max){ const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM xl_shopfronts WHERE territory = ?1').bind(t).first(); if(n && Number(n.n) >= cfg.max) return fail(409, 'Every shop in this territory is taken.'); }
-    const amount = cfg.quarx * UNIT;
+    const amount = shopCost(t, await worldCounter(env, 'quarx_mined'));   // r54: k × the current seam reward
     const r = await env.DB.prepare('INSERT OR IGNORE INTO xl_shopfronts (uid, name, quarx, at, territory) VALUES (?1, ?2, ?3, ?4, ?5)').bind(me.uid, name, amount, now, t).run();
     if(r.meta.changes){ await addWorld(env, 'shopfronts', 1); await addWorld(env, 'quarx_consumed', amount); }
     return json({ok:true, built: !!r.meta.changes, quarx: amount});
@@ -575,7 +616,7 @@ async function api(req, env, url){
   }
 
   if((p === '/api/coop/create' || p === '/api/coop/join') && req.method === 'POST'){
-    const cfg = SHOPS.ixeland, id = q.get('id') || '', share = Math.floor(cfg.quarx * UNIT / cfg.coop.max);
+    const cfg = SHOPS.ixeland, id = q.get('id') || '', share = shopCost('ixeland', await worldCounter(env, 'quarx_mined'));
     if(!ID_RE.test(id)) return fail(400, 'Invalid cooperative.');
     if(await env.DB.prepare('SELECT 1 FROM xl_shopfronts WHERE uid = ?1').bind(me.uid).first()) return fail(409, 'You already keep a shop. A citizen keeps one shop.');
     let name;
@@ -641,9 +682,21 @@ async function api(req, env, url){
     let feeBps = cfg.feeBps;
     if(item.asset === 'item'){
       if(qty !== 1 || Number(item.qty) !== 1) return fail(400, 'A unique asset is sold one at a time.');
-      feeBps = Math.max(feeBps, Math.min(2000, Math.max(0, Math.floor(Number(item.feeBps) || 0))));   // anti-flip fee on resale
-      const link = typeof item.link === 'string' && /^https:\/\/[^\s"'<>]{4,300}$/.test(item.link) ? item.link : null;
-      meta = JSON.stringify({ title: String(item.title || 'A rare asset').slice(0, 60), kind: String(item.kind || 'Collectible').slice(0, 20), link });
+      const link = typeof item.link === 'string' && /^https:\/\/[^\s"'<>]{4,300}$/.test(item.link) ? item.link : null, title = String(item.title || 'A rare asset').slice(0, 60);
+      /* r54: the anti-flip fee is the server's, from when the merchant acquired the item: an item bought in this order book
+         (named by src, or carrying the same title or proof link) or from the bazaar's outside sellers. A merchant can only
+         raise it. Works the merchant declares as found or made stay free until Xahara's oracles can check them. */
+      const norm = x => String(x || '').trim().toLowerCase().replace(/\s+/g, ' '), src = String(item.src || '');
+      const { results: got } = await env.DB.prepare("SELECT oid, meta, updated FROM xl_orders WHERE buyer = ?1 AND asset = 'item' AND status = 'filled' ORDER BY updated DESC LIMIT 200").bind(seller).all();
+      let acquiredAt = null, from = null;
+      for(const g of got){ const m = g.meta ? JSON.parse(g.meta) : {};
+        if(src === 'order:' + g.oid || norm(m.title) === norm(title) || (link && m.link === link)){ acquiredAt = Number(g.updated); from = 'order:' + g.oid; break; } }
+      if(acquiredAt === null && src.startsWith('rare')){ const key = src.slice(5), rare = await env.DB.prepare(key ? 'SELECT at FROM xl_ledger WHERE uid = ?1 AND op = ?2' : "SELECT at FROM xl_ledger WHERE uid = ?1 AND op LIKE 'rare-%' ORDER BY at DESC LIMIT 1").bind(...(key ? [seller, 'rare-' + key] : [seller])).first();
+        if(rare){ acquiredAt = Number(rare.at); from = 'rare'; } }
+      if(from && from.startsWith('order:') && await env.DB.prepare("SELECT 1 FROM xl_orders WHERE seller = ?1 AND asset = 'item' AND status = 'filled' AND meta LIKE ?2").bind(seller, '%"from":"' + from + '"%').first()) return fail(409, 'This asset was already resold.');
+      const declared = Math.min(FLIP.maxBps, Math.max(0, Math.floor(Number(item.feeBps) || 0)));
+      feeBps = Math.max(feeBps, declared, acquiredAt === null ? 0 : flipFeeBps(now - acquiredAt));
+      meta = JSON.stringify({ title, kind: String(item.kind || 'Collectible').slice(0, 20), link, from, declared: acquiredAt === null ? (item.made ? 'made' : 'held') : null });
     }
     const total = qty * unit, fee = Math.floor(total * feeBps / 10000);
     const sold = await env.DB.prepare("SELECT COALESCE(SUM(qty), 0) AS n FROM xl_orders WHERE seller = ?1 AND ref = ?2 AND status IN ('paid', 'filled')").bind(seller, ref).first();

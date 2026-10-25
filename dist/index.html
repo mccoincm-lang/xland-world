@@ -1774,7 +1774,8 @@ function projectBalances(st){ const av={}, lk={}; ASSETS.forEach(a=>{av[a.id]=0n
 function reconcile(st){ const {av,lk}=projectBalances(st); return ASSETS.every(a=>av[a.id].toString()===String(st.bal[a.id]||'0') && lk[a.id].toString()===String((st.locked||{})[a.id]||'0')); }
 function grantSandbox(st){ postLedger(st,'sandbox-grant',[['bux',BigInt(SIM.sandboxGrantBuX)*UNIT,'reserve:banx-locked']],`Sandbox allowance: ${SIM.sandboxGrantBuX} test dollars locked in the BanX reserve, ${SIM.sandboxGrantBuX} BuX minted 1:1 (simulation parameter, not canon)`,'hotex'); }
 /* ---- World economy: the server keeps the world counters (worker.js ECON). These mirror its rules for display and tests. ---- */
-const ECONOMY = { quarxCap:1e9, genesis:2.5e8, seamReward:1, targetMiners:8, dailySeams:5 };
+const ECONOMY = { quarxCap:1e9, genesis:2.5e8, seamReward:1, seamSecsBase:90, dailySeams:5, targetSeamsPerDay:256673 };   // r54: difficulty targets seams a day, not miners
+ECONOMY.targetMiners = ECONOMY.targetSeamsPerDay*ECONOMY.seamSecsBase/86400;   // ≈ 267
 const MINABLE_U = (ECONOMY.quarxCap-ECONOMY.genesis)*Number(UNIT);
 function quarxEpoch(mined){ return mined>=MINABLE_U ? Infinity : Math.floor(-Math.log2(1-mined/MINABLE_U)); }
 function seamRewardU(mined){ const e=quarxEpoch(mined); return isFinite(e) ? Math.max(1, Math.floor(ECONOMY.seamReward*Number(UNIT)/2**e)) : 0; }
@@ -1792,7 +1793,7 @@ function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style=
   return `<div class="world-econ"><h3>The world's QuarX</h3>
     <div class="econ-bar" role="img" aria-label="${pct.toFixed(6)} percent of minable QuarX extracted"><span style="width:${Math.max(.4,Math.min(100,pct))}%"></span></div>
     <dl class="kv"><dt>Extracted by all citizens</dt><dd>${fmtU(q.mined,4)} of ${fmtU(q.minable)} QuarX</dd><dt>Mining epoch</dt><dd>${q.epoch}. Reward per seam: ${fmtU(q.reward,4)} QuarX; it halves at ${fmtU(q.nextHalvingAt)} extracted</dd>
-    <dt>Difficulty</dt><dd>${q.difficulty.toFixed(2)}× (${q.miners24h} miner${q.miners24h===1?'':'s'} in the last day; seams get longer above ${ECONOMY.targetMiners})</dd></dl></div>`; }
+    <dt>Difficulty</dt><dd>${q.difficulty.toFixed(2)}× (${q.miners24h} miner${q.miners24h===1?'':'s'} in the last day; seams get longer above ${Math.round(ECONOMY.targetMiners)}, so Xland issues about ${ECONOMY.targetSeamsPerDay.toLocaleString('en-US')} seams a day at most)</dd></dl></div>`; }
 function worldReserveHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the reserve…</p>':'';
   const b=world.bux, ratio=b.minted?Math.round(b.reserve/b.minted*100):100;
   return `<div class="world-econ"><h3>Proof of reserve</h3><dl class="kv"><dt>BuX minted in Xland</dt><dd>${fmtU(b.minted)} BuX</dd><dt>Dollars locked in the reserve</dt><dd>${fmtU(b.reserve)} (test dollars in this alpha)</dd><dt>Backing</dt><dd><b>${ratio}%</b>. Reserve dollars can never be withdrawn; burned BuX only raise the backing.</dd></dl></div>`; }
@@ -1804,7 +1805,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r53';
+const BUILD = 'r54';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -3136,7 +3137,9 @@ function runSelfTests(){
   t('Locked funds cannot be spent', ()=>{ const c=clone(); postLedger(c,'mine-v',[['quarx',2n*UNIT]],'t'); lockLedger(c,'build-lock-v','LOCK','quarx',2n*UNIT,'t'); return !postLedger(c,'swap-forgex-v',[['quarx',-UNIT]],'t'); });
   t('QuarX mining reward halves with each epoch and stops at the cap', ()=>{ const U=Number(UNIT); return seamRewardU(0)===U && seamRewardU(MINABLE_U*.5)===U/2 && seamRewardU(MINABLE_U*.75)===U/4 && seamRewardU(MINABLE_U)===0 && ECONOMY.genesis+MINABLE_U/U===ECONOMY.quarxCap; });
   t('Halvings come sooner as supply runs out, never past the cap', ()=>{ let m=0, last=0; for(let k=0;k<20;k++){ const n=nextHalvingAtU(m); if(n<=m||n>MINABLE_U) return false; last=n; m=n; } return last<=MINABLE_U; });
-  t('Mining gets harder as more citizens mine', ()=>difficultyFor(0)===1 && difficultyFor(ECONOMY.targetMiners)===1 && difficultyFor(ECONOMY.targetMiners*2)===2 && difficultyFor(40)>difficultyFor(20));
+  t('Mining gets harder as more citizens mine', ()=>difficultyFor(0)===1 && difficultyFor(ECONOMY.targetMiners)===1 && Math.abs(difficultyFor(ECONOMY.targetMiners*2)-2)<1e-9 && difficultyFor(4000)>difficultyFor(2000));
+  t('Difficulty holds total issuance near the daily seam target', ()=>{ const tot=m=>m*Math.min(ECONOMY.dailySeams, 86400/(ECONOMY.seamSecsBase*difficultyFor(m))); return tot(100)===500 && Math.abs(tot(1e6)-ECONOMY.targetSeamsPerDay)<1 && Math.abs(tot(1e7)-ECONOMY.targetSeamsPerDay)<1; });
+  t('Shop and building costs halve with each halving', ()=>shopCostU('xetropolitan',Number(UNIT))===5n*UNIT && shopCostU('xetropolitan',Number(UNIT)/2)===5n*UNIT/2n && shopCostU('ixeland',Number(UNIT))===3n*UNIT/5n && quarxCostU(1,Number(UNIT)/4)===UNIT/4n);
   t('BuX enters only from the locked reserve', ()=>{ const c=clone(); const ins=c.ledger.filter(e=>e.asset==='bux'&&BigInt(e.delta)>0n&&e.event==='GRANT'); return ins.length>0 && ins.every(e=>e.from==='reserve:banx-locked') && !c.ledger.some(e=>e.to==='reserve:banx-locked'&&e.asset!=='bux'); });
   t('Tundrax endurance premium raises the floor with time held', ()=>{ const b=1000n*UNIT; return resaleFloor('tundrax',b,0)===b+UNIT && resaleFloor('tundrax',b,2*365.25*86400000)===b+80n*UNIT && resaleFloor('tundrax',b,20*365.25*86400000)===b+200n*UNIT && resaleFloor('ximberland',b,20*365.25*86400000)===b+UNIT; });
   t('Tundrax resale floor rejects below acquisition + 1 BuX', ()=>{ const c=clone(), basis=500n*UNIT; return !evaluate('tundrax','sell-home',{price:basis,basis},c).ok && evaluate('tundrax','sell-home',{price:basis+UNIT,basis},c).ok; });
@@ -3299,7 +3302,7 @@ function capabilities(){ const s=state, out=[], cap=(n,ok,why,go)=>out.push({n,o
   cap('Trade', s.passport&&bux>0n, s.passport?'Markets are places: trade where you stand, under local law.':'Needs a passport.', '#/place/forgex');
   { const avail=PARCELS.filter(pp=>parcelAvail(pp)==='AVAILABLE'); cap('Acquire property', s.passport&&avail.length>0, !s.passport?'Needs a passport.':avail.length?`${avail.length} parcels available; acquisition happens on site.`:'No parcels available right now.', '#/place/homax'); }
   cap('Sell to citizens', !!s.shop&&shopIsOpen(), !s.shop?'Build a shop with QuarX in an open territory: Plaxa, a farm stand, a green stall, a trading post or a lodge.':!shopIsOpen()?'Your Shoppex lease has ended.':`${s.shop.name} is open in ${R[shopT(s)].name}.`, s.shop?'#/place/'+SHOP_TERR[shopT(s)].place:'#/place/plaxa');
-  cap('Construct', !s.builds.length&&lawOn('permit-special')&&q>=BigInt(SIM.monumentQuarx)*UNIT, s.builds.length?'Your Special Building is complete.':!lawOn('permit-special')?'Needs a passed motion at CompleX.':q<BigInt(SIM.monumentQuarx)*UNIT?'Needs QuarX from Xalp.':'Ready at the Civic plaza.', '#/place/civicsite');
+  cap('Construct', !s.builds.length&&lawOn('permit-special')&&q>=quarxCostU(SIM.monumentQuarx), s.builds.length?'Your Special Building is complete.':!lawOn('permit-special')?'Needs a passed motion at CompleX.':q<quarxCostU(SIM.monumentQuarx)?'Needs QuarX from Xalp.':'Ready at the Civic plaza.', '#/place/civicsite');
   cap('Use institutions', !!s.passport, s.passport?'Institutions open to Hotex Guests and above.':'Needs a passport.', '#/place/xcool');
   cap('Govern', eligibleToVote(), eligibleToVote()?'Eligible under sandbox rules. Lex thresholds and vote weight remain TBD.':'Needs residency under sandbox rules. Lex rules are TBD.', '#/place/complex');
   return out; }
@@ -3610,9 +3613,9 @@ function viewParcel(id){
     <section class="activity glass" id="activity">${act}<div id="law-out"></div></section>
     <p class="meta faint" style="margin-top:1rem">Simulated ownership only. No real tokenization, custody or real-estate claim.</p></article>`;
 }
-function buildPlanHTML(pid){ const D=BUILDING_DEFS.farmstead, q=BigInt(state.bal.quarx), bx=BigInt(state.bal.bux), okQ=q>=BigInt(D.recipe.quarx)*UNIT, okB=bx>=BigInt(D.recipe.bux)*UNIT;
+function buildPlanHTML(pid){ const D=BUILDING_DEFS.farmstead, q=BigInt(state.bal.quarx), bx=BigInt(state.bal.bux), needQ=quarxCostU(D.recipe.quarx), okQ=q>=needQ, okB=bx>=BigInt(D.recipe.bux)*UNIT;
   return `<h2 class="act-h" style="margin-top:1.4rem">Plan a Farmstead</h2><p class="meta">${esc(D.class)}. ${esc(D.operation)} Phases: ${D.phases.join(', ')}. Resources are reserved at start and consumed at the commitment point (end of the foundation, ${D.commitPct*100}%). Before that you can cancel and get them back.</p>
-    <ul class="checks"><li class="ok">Site: your agricultural parcel</li><li class="ok">Permitted use: ${esc(D.zoning)}</li><li class="${okQ?'ok':'no'}">QuarX ${D.recipe.quarx} (you hold ${fmtAmt(q)})${expTag}</li><li class="${okB?'ok':'no'}">BuX ${D.recipe.bux} (you hold ${fmtAmt(bx)})${expTag}</li><li class="ok">Approval: ${esc(D.approval)}</li></ul>
+    <ul class="checks"><li class="ok">Site: your agricultural parcel</li><li class="ok">Permitted use: ${esc(D.zoning)}</li><li class="${okQ?'ok':'no'}">QuarX ${fmtAmt(needQ)} (you hold ${fmtAmt(q)})${expTag}</li><li class="${okB?'ok':'no'}">BuX ${D.recipe.bux} (you hold ${fmtAmt(bx)})${expTag}</li><li class="ok">Approval: ${esc(D.approval)}</li></ul>
     <button class="btn btn-gold" data-act="proj-start" data-id="${pid}" ${okQ&&okB&&here('farmx')?'':'disabled'}>Reserve resources and begin</button>${here('farmx')?'':' <span class="meta">You must be in FarmX.</span>'}`; }
 function projectHTML(pr){ const D=BUILDING_DEFS[pr.def], f=Math.min(1,(Date.now()-pr.start)/(pr.end-pr.start)), phase=f<D.commitPct?D.phases[0]:f<1?D.phases[1]:D.phases[2];
   return `<h2 class="act-h" style="margin-top:1.4rem">${esc(D.name)}: ${phase}</h2>${Date.now()>=pr.end?`<button class="btn btn-gold" data-act="proj-done" data-id="${pr.id}">Complete and activate</button>`:timerBar(pr.start,pr.end,pr.committed?'Resources committed.':'Resources reserved; commitment at the end of the foundation.')}
@@ -3622,10 +3625,10 @@ function actConstruct(){
   const g=presence('xetropolitan'); if(g) return g;
   const c=state.construct;
   if(c){ const done=Date.now()>=c.end; return `<h2 class="act-h">${esc(c.name)}</h2>${done?`<button class="btn btn-gold" data-act="build-done">Activate ${esc(c.name)}</button>`:timerBar(c.start,c.end,'Construction in progress. QuarX is reserved and will be consumed on completion.')+(c.reserved?'<button class="link link-muted" data-act="build-cancel">Cancel and return QuarX</button>':'')}`; }
-  const q=BigInt(state.bal.quarx), need=BigInt(SIM.monumentQuarx)*UNIT, hasQ=q>=need, ok=hasQ&&lawOn('permit-special');
+  const q=BigInt(state.bal.quarx), need=quarxCostU(SIM.monumentQuarx), hasQ=q>=need, ok=hasQ&&lawOn('permit-special');
   return `<h2 class="act-h">Begin construction</h2><p class="meta">Every requirement is checked before the world changes.</p>
     <ul class="checks"><li class="ok">Location: Civic plaza, Xetropolitan</li>
-    <li class="${ok?'ok':'no'}">QuarX: ${SIM.monumentQuarx} required, you hold ${fmtAmt(q)}${expTag}</li>
+    <li class="${ok?'ok':'no'}">QuarX: ${fmtAmt(need)} required, you hold ${fmtAmt(q)}${expTag}</li>
     <li class="${lawOn('permit-special')?'ok':'no'}">Governance permission: ${lawOn('permit-special')?'approved by vote at CompleX':'needs a passed motion at CompleX'}</li>
     <li class="pending">Lex burn: amount TBD in the canon, so nothing is burned yet<span class="tag tag-tbd">TBD</span></li></ul>
     <div class="swap-row"><label class="meta" for="bd-name">Name of the building</label><input class="input" id="bd-name" maxlength="32" dir="auto" placeholder="Monument of the First Settlers"></div>
@@ -3674,7 +3677,10 @@ const SHOP_TERR = {
 const SHOP_PLACES = Object.values(SHOP_TERR).flatMap(c=>[c.place,c.market]).filter(Boolean);
 const symOf = a => (ASSETS.find(x=>x.id===a)||{sym:a}).sym;
 const market = { buying:[], selling:[], coops:{}, at:0, busy:false, err:'' };
-const shopCostU = t => { const c=SHOP_TERR[t]; return c.coop ? BigInt(c.quarx)*UNIT/BigInt(c.coop.max) : BigInt(c.quarx)*UNIT; };
+/* r54 (founder decision): QuarX costs are multiples of the current seam reward, so they halve with every halving. */
+const rewardNowU = () => world&&world.quarx ? world.quarx.reward : seamRewardU(0);
+const quarxCostU = (k, rewardU) => BigInt(Math.floor(k*(rewardU!=null?rewardU:rewardNowU())));
+const shopCostU = (t, rewardU) => { const c=SHOP_TERR[t], q=quarxCostU(c.quarx, rewardU); return c.coop ? q/BigInt(c.coop.max) : q; };
 const coopOpen = members => members >= SHOP_TERR.ixeland.coop.openAt;
 /* ---- Rare and digital assets (Xahara stalls) ----
    An item is one unique thing a citizen holds: a golden bit found in the dunes, a rare asset bought from an outside seller,
@@ -3702,7 +3708,7 @@ function listItem(st, itemId, price, ref){
   if(typeof price!=='bigint'||price<1n||price>1000000n*UNIT) return {ok:false, why:'Set a price, up to 1,000,000 BuX.'};
   if((st.listings||[]).length>=SIM.maxListings) return {ok:false, why:`A stall holds up to ${SIM.maxListings} listings.`};
   it.listed=ref; st.listings=st.listings||[];
-  st.listings.push({ref, asset:'item', qty:1, price:price.toString(), itemId, title:it.name, kind:it.kind||'Collectible', link:it.link||null, made:isMade(it), feeBps:itemFeeBps(it), at:Date.now()}); return {ok:true}; }
+  st.listings.push({ref, asset:'item', qty:1, price:price.toString(), itemId, title:it.name, kind:it.kind||'Collectible', link:it.link||null, made:isMade(it), feeBps:itemFeeBps(it), src:it.src||(it.from==='Outside seller'?'rare':isMade(it)?'made':''), at:Date.now()}); return {ok:true}; }
 const hasOp = (st,op) => st.ledger.some(e=>e.op===op);
 const shopT = st => { st=st||state; return st.shop ? (st.shop.t||'xetropolitan') : null; };
 const shopKind = t => (SHOP_TERR[t]||SHOP_TERR.xetropolitan).kind;
@@ -3735,7 +3741,7 @@ function openShop(st, name, t, tally, coop){ name=String(name||'').trim().replac
   if(c.coop){ if(!coop || !coop.id) return {ok:false, why:'Found a cooperative or join one.'};
     if((coop.members||0)>=c.coop.max) return {ok:false, why:`This cooperative already has ${c.coop.max} members.`}; if(coop.name) name=coop.name; }
   if(name.length<2||name.length>32) return {ok:false, why:'Give your shop a name of 2 to 32 characters.'};
-  const q=shopCostU(t); if(BigInt(st.bal.quarx||'0')<q) return {ok:false, why:c.coop?`A share in a cooperative needs ${fmtAmt(q)} QuarX from Xalp.`:`A ${c.kind.toLowerCase()} in ${R[t].name} needs ${c.quarx} QuarX from Xalp.`};
+  const q=shopCostU(t); if(BigInt(st.bal.quarx||'0')<q) return {ok:false, why:c.coop?`A share in a cooperative needs ${fmtAmt(q)} QuarX from Xalp.`:`A ${c.kind.toLowerCase()} in ${R[t].name} needs ${fmtAmt(q)} QuarX from Xalp.`};
   if(q>0n && !lockLedger(st,'shop-lock-main','LOCK','quarx',q,`${c.kind} for ${name}: QuarX reserved`,c.place)) return {ok:false, why:'Already processed.'};
   if(q>0n) useVested(st,q); if(q>0n) lockLedger(st,'shop-build-main','CONSUME','quarx',q,c.coop?`Share in the cooperative ${name}, ${R[t].name}`:`${c.kind} built in ${R[t].name}: ${name}`,c.place,'consumed:shopfront');
   st.shop={name, t, at:Date.now()}; if(c.coop) st.shop.coop=coop.id; return {ok:true}; }
@@ -3761,7 +3767,7 @@ function unlistGoods(st, ref, pending){
 function marketPay(st, o, shopName){ return postLedger(st,'mkt-pay-'+o.oid,[['bux',-BigInt(o.total),'escrow:market']],`Order at ${shopName||'a citizen shop'}: ${o.qty} ${symOf(o.asset)}, paid into escrow`,o.oid); }
 function marketReceive(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-refund-'+o.oid)) return false;
   if(o.asset==='item'){ const m=o.meta||{}; if(!itemMove(st,'mkt-recv-'+o.oid,'shop:'+o.seller,'player',`Bought at a Xahara stall: ${m.title||'a rare asset'}`,o.oid)) return false;
-    st.items=st.items||[]; st.items.push({id:'it-'+o.oid, name:m.title||'A rare asset', kind:m.kind||'Collectible', link:m.link||null, from:'Bought at a Xahara stall', basis:String(o.total), at:Date.now()}); return true; }
+    st.items=st.items||[]; st.items.push({id:'it-'+o.oid, name:m.title||'A rare asset', kind:m.kind||'Collectible', link:m.link||null, from:'Bought at a Xahara stall', src:'order:'+o.oid, basis:String(o.total), at:Date.now()}); return true; }
   return postLedger(st,'mkt-recv-'+o.oid,[[o.asset,BigInt(o.qty)*UNIT,'shop:'+o.seller]],`Delivered from a citizen shop: ${o.qty} ${symOf(o.asset)}`,o.oid); }
 function marketRefund(st, o){ if(!hasOp(st,'mkt-pay-'+o.oid)||hasOp(st,'mkt-recv-'+o.oid)) return false;
   return postLedger(st,'mkt-refund-'+o.oid,[['bux',BigInt(o.total),'escrow:market']],`Order ${o.status==='declined'?'declined by the merchant':'cancelled'}: BuX returned from escrow`,o.oid); }
@@ -3809,7 +3815,7 @@ function refreshMarketView(typing){ const {arg}=parse();
 async function publishShop(){ if(!social.db || !social.me || !state.shop || !social.writable) return; const t=shopT(state);
   const doc={ v:2, name:state.shop.name, t, kind:shopKind(t), coop:state.shop.coop||null, handle:(state.privacy||{}).name!=='private'?state.handle:'', at:Date.now(),
     openUntil: SHOP_TERR[t].lease ? shopLeaseEnd() : Date.now()+SIM.shopInactiveDays*86400000,
-    items:(state.listings||[]).map(l=>Object.assign({ref:l.ref, asset:l.asset, qty:l.qty, left:l.asset==='item'?1:Number(listingLeft(state,l)), price:Number(l.price)}, l.asset==='item'?{title:l.title, kind:l.kind, link:l.link, made:!!l.made, feeBps:l.feeBps||0}:{})) };
+    items:(state.listings||[]).map(l=>Object.assign({ref:l.ref, asset:l.asset, qty:l.qty, left:l.asset==='item'?1:Number(listingLeft(state,l)), price:Number(l.price)}, l.asset==='item'?{title:l.title, kind:l.kind, link:l.link, made:!!l.made, feeBps:l.feeBps||0, src:l.src||''}:{})) };
   try{ await social.db.doc('shops/'+social.me).set(doc); }catch(e){} }
 const ORDER_TEXT = { paid:['Waiting for the merchant','pending'], filled:['Delivered','ok'], declined:['Declined, refunded','no'], cancelled:['Cancelled, refunded','no'] };
 function orderRow(o, side){ const sh=social.shops[side==='buy'?o.seller:o.buyer], who=side==='buy'?(sh&&sh.name||'A citizen shop'):(citizenName(social.citizens.find(c=>c.id===o.buyer))), st=ORDER_TEXT[o.status]||[o.status,'pending'];
@@ -3819,8 +3825,8 @@ function ordersTable(list, side){ return list.length?`<div class="tbl otbl"><tab
 function shopsOffline(){ return `<div class="lawcard"><b>The market needs the shared world</b><p>Shops trade between real citizens on xland.world, and the shared world cannot be reached from this view. Reload the page in a moment.</p></div>`; }
 function shopTally(t){ return Object.values(social.shops||{}).filter(sh=>sh&&(sh.t||'xetropolitan')===t).length; }
 /* The build form for a territory: what the shop may sell, what it costs, and the checks before building. */
-function shopBuildHTML(t){ const c=SHOP_TERR[t], s=state, q=BigInt(s.bal.quarx||'0'), qn=BigInt(c.quarx)*UNIT, full=c.max&&shopTally(t)>=c.max;
-  return `<ul class="checks"><li class="ok">${esc(c.why)}</li>${c.quarx?`<li class="${q>=qn?'ok':'no'}">${c.quarx} QuarX for the build (you hold ${fmtAmt(q)}). The QuarX is consumed for good.<span class="tag tag-prov">Provisional</span></li>`:'<li class="ok">Free: no QuarX for the build</li>'}
+function shopBuildHTML(t){ const c=SHOP_TERR[t], s=state, q=BigInt(s.bal.quarx||'0'), qn=shopCostU(t), full=c.max&&shopTally(t)>=c.max;
+  return `<ul class="checks"><li class="ok">${esc(c.why)}</li>${c.quarx?`<li class="${q>=qn?'ok':'no'}">${fmtAmt(qn)} QuarX for the build (${c.quarx}× the reward per seam, so it halves with every halving; you hold ${fmtAmt(q)}). The QuarX is consumed for good.</li>`:'<li class="ok">Free: no QuarX for the build</li>'}
     <li class="ok">Sells: ${c.assets.includes('item')?'rare and digital assets':c.assets.map(symOf).join(', ')}. Market fee: ${c.assets.includes('item')?'none on what you found or made; the anti-flip fee on what you bought':c.feeBps?`${c.feeBps/100}% to the ${esc(R[t].name)} treasury`:'none'}.</li>
     ${c.max?`<li class="${full?'no':'ok'}">${shopTally(t)} of ${c.max} ${esc(c.kind.toLowerCase())}s taken</li>`:''}
     <li class="${social.db?'ok':'no'}">Shared world reachable, so other citizens can find you</li></ul>
@@ -3915,7 +3921,7 @@ function actPlaxa(){
     <p style="margin-top:1rem"><a class="link" href="#/place/shoppex">${shopT(state)==='xetropolitan'?'Manage your shop':state.shop?'Your shop':'Open a shop of your own'}</a></p>
     ${priceIndexHTML()}
     <h3 style="margin:1.6rem 0 .5rem">Shops across Xland</h3><div class="tbl"><table><thead><tr><th>Territory</th><th>Kind</th><th>Sells</th><th>Shopfront</th><th>Fee</th></tr></thead><tbody>
-    ${Object.entries(SHOP_TERR).map(([t,c])=>`<tr><td><a class="link" href="#/place/${c.market||c.place}">${esc(R[t].name)}</a></td><td>${esc(c.kind)}</td><td>${c.soon?'Next step':c.assets.map(symOf).join(', ')}</td><td>${c.soon?'—':c.coop?`${c.quarx} QuarX, shared by up to ${c.coop.max}`:c.quarx+' QuarX'}</td><td>${c.soon?'—':c.feeBps?c.feeBps/100+'%':'None'}</td></tr>`).join('')}</tbody></table></div>`; }
+    ${Object.entries(SHOP_TERR).map(([t,c])=>`<tr><td><a class="link" href="#/place/${c.market||c.place}">${esc(R[t].name)}</a></td><td>${esc(c.kind)}</td><td>${c.soon?'Next step':c.assets.map(symOf).join(', ')}</td><td>${c.soon?'—':c.coop?`${fmtAmt(quarxCostU(c.quarx))} QuarX, shared by up to ${c.coop.max}`:c.quarx?`${fmtAmt(quarxCostU(c.quarx))} QuarX (${c.quarx}× reward)`:'Free'}</td><td>${c.soon?'—':c.feeBps?c.feeBps/100+'%':'None'}</td></tr>`).join('')}</tbody></table></div>`; }
 /* What citizens actually pay each other, next to the simulated market rates. */
 async function refreshPrices(){ if(!serverBE) return; try{ market.prices=(await serverBE.call('GET','/market/prices')).prices||{}; market.pricesAt=Date.now(); }catch(e){} }
 function priceIndexHTML(){ const P=market.prices; if(!P) return '';
@@ -4329,7 +4335,7 @@ document.addEventListener('click', e=>{
       rt.listing={price:price.toString(), at:Date.now(), lawVersion:LAW_VERSION}; emit('PROPERTY_RIGHT_CHANGED',{parcel:id, change:'listed'}); save(); render(); toast('Listed for sale.'); break; }
     case 'parcel-unlist': { const rt=rightFor(state,id); if(rt){ delete rt.listing; save(); render(); } break; }
     case 'proj-start': { const rt=rightFor(state,id), D=BUILDING_DEFS.farmstead; if(!rt||!rt.rights.includes('Construct: Farmstead')||!here('farmx')||state.projects.some(x=>x.parcel===id&&x.status==='active')||state.buildings.some(b=>b.parcel===id)) return;
-      const key='proj-'+id+'-'+Date.now().toString(36), q=BigInt(D.recipe.quarx)*UNIT, bx=BigInt(D.recipe.bux)*UNIT;
+      const key='proj-'+id+'-'+Date.now().toString(36), q=quarxCostU(D.recipe.quarx), bx=BigInt(D.recipe.bux)*UNIT;
       if(BigInt(state.bal.quarx)<q){ toast('Not enough QuarX.'); return; } if(BigInt(state.bal.bux)<bx){ toast('Not enough BuX.'); return; }
       const begin=(t,end,commitAt)=>{ lockLedger(state,key+'-lock-quarx','LOCK','quarx',q,`Reserved for a Farmstead on ${id}`,id); lockLedger(state,key+'-lock-bux','LOCK','bux',bx,`Reserved for a Farmstead on ${id}`,id);
         state.projects.push({id:key, key, def:'farmstead', parcel:id, start:t, end, commitAt, reserved:{quarx:q.toString(), bux:bx.toString()}, committed:false, status:'active', server:serverMode});
@@ -4357,7 +4363,7 @@ document.addEventListener('click', e=>{
         $('#law-out').innerHTML=`<div class="lawcard"><b>Not allowed: no resale below acquisition price + 1 BuX.</b><p>Ximberland prevents property price dumping. You acquired this Homax for ${fmtAmt(h.basis)} BuX, so the lowest allowed price is ${fmtAmt(floor)} BuX.</p></div>`; return; }
       state.listing={price:price.toString(), at:Date.now()}; save(); render(); toast('Listed for sale.'); break; }
     case 'homax-unlist': state.listing=null; save(); render(); break;
-    case 'build-start': { if(!here('xetropolitan')||state.construct||state.builds.length||!lawOn('permit-special')) return; const need=BigInt(SIM.monumentQuarx)*UNIT;
+    case 'build-start': { if(!here('xetropolitan')||state.construct||state.builds.length||!lawOn('permit-special')) return; const need=quarxCostU(SIM.monumentQuarx);
       const name=(($('#bd-name')&&$('#bd-name').value)||'').trim().slice(0,32)||'Monument of the First Settlers';
       const k=Date.now().toString(36), op='build-lock-'+k; if(BigInt(state.bal.quarx)<need){ toast('Not enough QuarX.'); return; }
       const begin=(t,end)=>{ lockLedger(state,op,'LOCK','quarx',need,`QuarX reserved for construction: ${name}`,'civicsite'); state.construct={name,start:t,end,op,key:k,reserved:need.toString(),server:serverMode}; save(); render(); toast('QuarX reserved. Construction started.'); };
@@ -4370,7 +4376,7 @@ document.addEventListener('click', e=>{
       const finish=()=>{ if(c.reserved) useVested(state,BigInt(c.reserved));
         if(c.reserved && !lockLedger(state,'build-consume-'+c.key,'CONSUME','quarx',BigInt(c.reserved),`QuarX consumed by construction: ${c.name}`,'civicsite','consumed:civicsite')) return;
         state.builds.push({name:c.name, at:Date.now()}); state.construct=null;
-        chron('SpecialBuilding',`${c.name} raised in Xetropolitan`,`A Special Building now stands in the Civic plaza, built with ${SIM.monumentQuarx} QuarX.`,'xetropolitan','legacy');
+        chron('SpecialBuilding',`${c.name} raised in Xetropolitan`,`A Special Building now stands in the Civic plaza, built with ${fmtAmt(c.reserved)} QuarX.`,'xetropolitan','legacy');
         save(); render(); toast(`${c.name} is complete.`); };
       if(c.server){ srvBuild('/build/done?key='+encodeURIComponent(c.key)).then(finish); break; } finish(); break; }
     case 'gov-draft': { if(!here('xetropolitan')||!govCapabilities()[2][1]||(sharedMode()&&id==='xcool-program')) return; state.govDraft={type:id, stage:'DRAFT', at:Date.now()}; emit('PROPOSAL_DRAFTED',{type:id}); save(); render(); break; }
@@ -4454,7 +4460,7 @@ document.addEventListener('click', e=>{
     case 'attend': { if(!here(id)||state.attended.includes(id)) return; state.attended.push(id); save(); render(); toast('You attended the Ixeland assembly.'); break; }
     case 'rare-buy': { if(!here('xahara')||state.rareBought[id]) return; const l=rareListings().find(x=>x.key===id); if(!l) return;
       const op='rare-'+id; if(!postLedger(state,op,[['bux',-BigInt(l.price)*UNIT]],`Xahara bazaar: ${l.name} from an outside seller`,'bazaar')){ toast('Not enough BuX.'); return; }
-      state.rareBought[id]=1; state.items.push({name:l.name, from:'Outside seller', basis:String(BigInt(l.price)*UNIT), at:Date.now()});
+      state.rareBought[id]=1; state.items.push({id:'it-rare-'+id, name:l.name, from:'Outside seller', src:'rare:'+id, basis:String(BigInt(l.price)*UNIT), at:Date.now()});
       if(state.items.length===1) chron('RareAsset','First rare asset from Xahara',`You bought ${l.name} from an outside seller at the bazaar.`,'xahara','notable');
       save(); render(); toast(`Acquired ${l.name}.`); break; }
     case 'search-start': { if(!here('xahara')||state.search) return; const t=Date.now(); state.search={start:t,end:t+SIM.searchSecs*1000,op:opId('search')}; state.searchLog.push(t); save(); render(); break; }

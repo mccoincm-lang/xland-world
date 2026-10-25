@@ -1,5 +1,5 @@
 // Attack and failure scenarios against the server wallet, the order book and the world rules, through the API alone.
-// Every line is a rule the server must hold. A FAIL is a gap to fix, not a broken test.
+// Every line is a rule the server must hold. A FAIL is a gap to fix, not a broken test. Since r54 there are no known gaps.
 // Usage: node test/dev-server.mjs 8787 &  then  node test/wallet-attacks.cjs [port]
 const port = process.argv[2] || 8787, base = `http://localhost:${port}/api`;
 const api = async (key, method, path, body, extra) => { const r = await fetch(base + path, { method, headers: { "x-xland-key": key, "content-type": "application/json", ...(extra || {}) }, body: body ? JSON.stringify(body) : undefined }); let j = {}; try { j = await r.json(); } catch {} return { status: r.status, body: j }; };
@@ -91,16 +91,41 @@ const credit = (k, asset, units, op) => api(k, "POST", `/dev/credit?asset=${asse
   r = await ledger(A, { op: "mkt-refund-none", kind: "post", lines: [["bux", "1"]] }); check("No refund without a payment", r.status === 422, err(r));
   // Resale of bought goods: A bought VegieX; the founder's rule says shops sell only what the citizen produced, found or made.
   await credit(A, "quarx", "20000", "mine-dev-a2"); await api(A, "POST", "/shop/open?name=Flip&t=farmx");
-  r = await ledger(A, { op: "mkt-list-flip", kind: "lock", lk: "LOCK", asset: "vegiex", qty: "20000" });
-  check("GAP? Bought goods cannot be listed for resale (server does not know the origin of stock)", r.status === 422, err(r));
+  // A produced 20 VegieX, sold 1 at Forgex and bought 2 in a shop: 21 in the wallet, but only 19 of them are A's own.
+  r = await ledger(A, { op: "mkt-list-flip-" + R, kind: "lock", lk: "LOCK", asset: "vegiex", qty: "200000" });
+  check("Bought goods cannot be listed for resale (r54: the server counts what the citizen produced)", r.status === 422 && /produced yourself/.test(r.body.error), err(r));
+  r = await ledger(A, { op: "mkt-list-own-" + R, kind: "lock", lk: "LOCK", asset: "vegiex", qty: "190000" });
+  check("Own produce up to what was made, less what was sold, can be listed", r.status === 200, err(r));
   // Xahara anti-flip: the fee rate comes from the seller's own shop document.
   await credit(X, "quarx", "0", "mine-dev-x").catch(() => {});
   r = await api(X, "POST", "/shop/open?name=Dunes&t=xahara"); check("Xahara stall opens for free", r.status === 200 && r.body.quarx === 0, err(r));
   await api(X, "PUT", "/doc?c=shops&id=" + uidX, { data: { name: "Dunes", openUntil: Date.now() + 86400000, items: [{ ref: "it1", asset: "item", qty: 1, price: 100000, title: "Bought elsewhere", kind: "Collectible", feeBps: 0, link: "javascript:alert(1)" }] } });
   r = await api(A, "POST", `/market/order?oid=o-it1-${R}&seller=${uidX}&ref=it1&qty=1&price=100000`);
   check("Unsafe proof links are dropped from the order record", r.status === 200 && r.body.order.meta && r.body.order.meta.link === null, JSON.stringify(r.body.order && r.body.order.meta));
-  check("GAP? Anti-flip fee on a resold item is not self-declared by the seller", r.status === 200 && r.body.order.fee > 0, "fee=" + (r.body.order && r.body.order.fee));
+  check("An item its merchant never acquired in Xland sells free, marked as self-declared", r.status === 200 && r.body.order.fee === 0 && r.body.order.meta.declared === "held", JSON.stringify(r.body.order && r.body.order.meta));
   r = await api(A, "POST", `/market/order?oid=o-it2-${R}&seller=${uidX}&ref=it1&qty=1&price=100000`); check("A unique item sells once", r.status === 409, err(r));
+  // r54: the anti-flip fee is the server's. Y buys a work from X and relists it as if it were Y's own, declaring no fee.
+  await sleep(10500);
+  const Y = newKey("Y"), Z = newKey("Z"); await api(Y, "GET", "/me"); await api(Z, "GET", "/me");
+  await ledger(Y, { op: "sandbox-grant", kind: "post", lines: [["bux", "1"]] }); await ledger(Z, { op: "sandbox-grant", kind: "post", lines: [["bux", "1"]] });
+  const uidY = await uid(Y);
+  await api(X, "PUT", "/doc?c=shops&id=" + uidX, { data: { name: "Dunes", openUntil: Date.now() + 86400000, items: [{ ref: "it3", asset: "item", qty: 1, price: 50000, title: "Second Work", kind: "Digital art", feeBps: 0, made: true, src: "made" }] } });
+  r = await api(Y, "POST", `/market/order?oid=o-it3-${R}&seller=${uidX}&ref=it3&qty=1&price=50000`); check("Y buys a work from X", r.status === 200, err(r));
+  await api(Y, "POST", "/shop/open?name=Flipper&t=xahara");
+  await api(Y, "PUT", "/doc?c=shops&id=" + uidY, { data: { name: "Flipper", openUntil: Date.now() + 86400000, items: [{ ref: "f1", asset: "item", qty: 1, price: 80000, title: "second  work", kind: "Digital art", feeBps: 0, made: true, src: "made" }, { ref: "f2", asset: "item", qty: 1, price: 80000, title: "Renamed", kind: "Digital art", feeBps: 0, src: "order:o-it3-" + R }] } });
+  r = await api(Z, "POST", `/market/order?oid=o-f1-${R}&seller=${uidY}&ref=f1&qty=1&price=80000`);
+  check("Relisting a bought work as one's own still pays the 20% anti-flip fee", r.status === 200 && r.body.order.fee === 16000 && r.body.order.meta.from === "order:o-it3-" + R, err(r) + " fee=" + (r.body.order && r.body.order.fee));
+  r = await api(Z, "POST", `/market/order?oid=o-f2-${R}&seller=${uidY}&ref=f2&qty=1&price=80000`); check("The same bought work cannot be resold twice", r.status === 409 && /already resold/.test(r.body.error), err(r));
+  // r54: presale QuarX builds at once but is tradable only after 12 months.
+  const V = newKey("V"); await api(V, "GET", "/me"); await ledger(V, { op: "sandbox-grant", kind: "post", lines: [["bux", "1"]] });
+  await ledger(V, { op: "presale-v1", kind: "post", lines: [["bux", "-1500000"], ["quarx", "50000"]] });
+  r = await ledger(V, { op: "swap-forgex-v1", kind: "post", lines: [["quarx", "-10000"], ["bux", "400000"]] }); check("Presale QuarX cannot be sold before its lock ends", r.status === 422 && /12 months/.test(r.body.error), err(r));
+  await credit(V, "quarx", "10000", "mine-dev-v1");
+  r = await ledger(V, { op: "swap-forgex-v2", kind: "post", lines: [["quarx", "-10000"], ["bux", "400000"]] }); check("Mined QuarX next to presale QuarX can be sold", r.status === 200, err(r));
+  r = await api(V, "POST", "/shop/open?name=Post&t=xalp"); w = await wallet(V);
+  check("Shopfront cost is k × the seam reward (Xalp 4 × 1 QuarX in epoch 1)", r.status === 200 && r.body.quarx === 40000, JSON.stringify(r.body));
+  const wr = (await api(V, "GET", "/world")).body;
+  check("World reports the r54 difficulty target and costs", wr.quarx.targetSeamsPerDay === 256673 && wr.market.shopCosts.xetropolitan === 50000 && wr.market.shopCosts.ixeland === 6000 && wr.market.buildCosts.farmstead === 10000, JSON.stringify({ t: wr.quarx.targetSeamsPerDay, c: wr.market.shopCosts }));
   // --- World rules ---
   await sleep(10500);
   r = await api(A, "PUT", "/doc?c=claims&id=AQX-01", { data: { owner: uidA } }); check("The House on the River can never be claimed", r.status === 403, err(r));
