@@ -17,6 +17,7 @@ The Xland world: the 3D map, Hotex, passports, wallet, land, governance and the 
 | `test/audit.cjs` | Visits every route as a new tester and reports errors, overflow, tiny text and broken artwork. |
 | `test/journey.cjs` | Plays a new tester's first steps on a phone. |
 | `test/r53.cjs` | API-only check of the r53 server rules: build sites (reserve, commit, cancel, complete, own plot) and the Assembly (residency, windows, revotes, timelock, law set). Needs the dev server. |
+| `test/wallet-attacks.cjs` | 70 attack and failure scenarios against the server wallet, swaps, presale, the daily QuarX limit, alpha import, the order book, claims and the world timers; prints the gaps still open. Needs the dev server. |
 | `test/map.cjs`, `test/economy.cjs`, `test/market.cjs`, `test/territories.cjs`, `test/coop.cjs`, `test/xahara.cjs` | Multi-citizen checks: shared land, server mining and BuX mint, a shop sale between citizens, a farm stand sale in FarmX and population stages, an Ixeland cooperative, a Xahara stall sale and resale, and the server wallet (forged credits refused, alpha carry-over). |
 
 ## Change, check, ship
