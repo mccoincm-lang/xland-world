@@ -62,7 +62,14 @@ const SCHEMA = [
   "CREATE INDEX IF NOT EXISTS xl_ledger_at ON xl_ledger (uid, at)",
   "CREATE TABLE IF NOT EXISTS xl_rejects (uid TEXT NOT NULL, op TEXT NOT NULL, why TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS xl_rejects_at ON xl_rejects (at)",
-  "CREATE TABLE IF NOT EXISTS xl_plots (uid TEXT NOT NULL, slot TEXT NOT NULL, kind TEXT NOT NULL, started INTEGER NOT NULL, ends INTEGER NOT NULL, out INTEGER NOT NULL, op TEXT NOT NULL, PRIMARY KEY (uid, slot))"
+  "CREATE TABLE IF NOT EXISTS xl_plots (uid TEXT NOT NULL, slot TEXT NOT NULL, kind TEXT NOT NULL, started INTEGER NOT NULL, ends INTEGER NOT NULL, out INTEGER NOT NULL, op TEXT NOT NULL, PRIMARY KEY (uid, slot))",
+  // Construction timed by the server (r53): every build site, its reserved resources, and its commitment and completion times
+  "CREATE TABLE IF NOT EXISTS xl_builds (uid TEXT NOT NULL, key TEXT NOT NULL, def TEXT NOT NULL, parcel TEXT, name TEXT, started INTEGER NOT NULL, commit_at INTEGER NOT NULL, ends INTEGER NOT NULL, reserved TEXT NOT NULL, status TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (uid, key))",
+  "CREATE INDEX IF NOT EXISTS xl_builds_parcel ON xl_builds (parcel, status)",
+  // The Xiberal Assembly held by the server (r53): proposals with server-set times and quorum, one ballot per citizen and proposal
+  "CREATE TABLE IF NOT EXISTS xl_proposals (pid TEXT PRIMARY KEY, uid TEXT NOT NULL, type TEXT NOT NULL, law TEXT NOT NULL, content TEXT NOT NULL, published INTEGER NOT NULL, voting_at INTEGER NOT NULL, closes_at INTEGER NOT NULL, execute_at INTEGER NOT NULL, quorum INTEGER NOT NULL, policy TEXT NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS xl_proposals_uid ON xl_proposals (uid, published)",
+  "CREATE TABLE IF NOT EXISTS xl_ballots (pid TEXT NOT NULL, uid TEXT NOT NULL, choice TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (pid, uid))"
 ];
 
 /* ---------------- World economy (server-authoritative) ----------------
@@ -173,6 +180,7 @@ async function walletPropose(env, uid, body, now){
   if(body.kind === 'lock'){
     const a = body.asset, q = B(body.qty);
     if(!WALLET_ASSETS.includes(a) || q === null || q <= 0n) return { ok: false, why: 'Invalid reservation.' };
+    if(BUILD_PREFIXES.some(p => op.startsWith(p))) return { ok: false, why: 'Construction is timed by the server.' };   // r53: build sites reserve, release and consume through /api/build/*
     if(op.startsWith('mkt-list-') && a === 'quarx'){ const cap = BigInt(ECON.dailySeams * seamReward(await worldCounter(env, 'quarx_mined'))); if(await quarxSoldToday(env, uid, now) + q > cap) return { ok: false, why: 'Daily QuarX sale limit reached.' }; }
     const data = { lk: body.lk, asset: a, qty: q.toString() };
     if(body.lk === 'LOCK') return walletApply(env, uid, op, { [a]: -q }, { [a]: q }, data);
@@ -212,6 +220,105 @@ async function walletPropose(env, uid, body, now){
     return walletApply(env, uid, op, d, null, data);
   }
   return { ok: false, why: 'Only the world can credit this.' };   // seams, harvests and market settlements are credited by the server itself
+}
+
+/* ---------------- Construction timed by the server (r53) ----------------
+   A build site reserves its resources on the server, commits them (consumes them for good) only once the server clock
+   has passed the commitment point, and completes only after the server's end time. The page keeps showing its own
+   timers, but every reservation, release, consumption and completion is decided here; a citizen's page can no longer
+   propose `proj-` or `build-` wallet operations itself. Recipes mirror BUILDING_DEFS and SIM in index.html. */
+const BUILDS = {
+  farmstead: { territory: 'farmx', parcel: /^FX-/, recipe: { quarx: 1, bux: 50 }, secs: 60, commitPct: 0.25, opLock: k => a => `${k}-lock-${a}`, opUnlock: k => a => `${k}-unlock-${a}`, opConsume: k => a => `${k}-consume-${a}`, keyRe: /^proj-[A-Z]{2,3}-[A-Za-z0-9]{1,6}-[A-Za-z0-9]{1,12}-[a-z0-9]{1,12}$/ },
+  special:   { territory: 'xetropolitan', recipe: { quarx: 3 }, secs: 40, commitPct: 1, once: true, law: 'permit-special', opLock: k => () => `build-lock-${k}`, opUnlock: k => () => `build-unlock-${k}`, opConsume: k => () => `build-consume-${k}`, keyRe: /^[a-z0-9]{1,12}$/ }
+};
+const BUILD_PREFIXES = ['proj-', 'build-'];
+const buildOut = b => ({ key: b.key, def: b.def, parcel: b.parcel, name: b.name, start: Number(b.started), commitAt: Number(b.commit_at), end: Number(b.ends), reserved: JSON.parse(b.reserved), status: b.status, committed: ['committed', 'complete'].includes(b.status) });
+async function buildGet(env, uid, key){ return env.DB.prepare('SELECT * FROM xl_builds WHERE uid = ?1 AND key = ?2').bind(uid, key).first(); }
+async function buildStart(env, uid, def, key, parcel, name, now){
+  const D = BUILDS[def];
+  if(!D) return { s: 400, why: 'Nothing like that can be built.' };
+  if(!D.keyRe.test(key)) return { s: 400, why: 'Invalid build site.' };
+  if(await buildGet(env, uid, key)) return { s: 409, why: 'This build site already exists.' };
+  if(D.parcel){
+    if(!parcel || !D.parcel.test(parcel) || !ID_RE.test(parcel)) return { s: 400, why: `A ${def} needs a parcel in ${D.territory}.` };
+    const claim = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'claims' AND id = ?1").bind(parcel).first();
+    if(!claim || JSON.parse(claim.data).owner !== uid) return { s: 403, why: 'You do not hold this parcel.' };
+    if(await env.DB.prepare("SELECT 1 FROM xl_builds WHERE parcel = ?1 AND status IN ('active', 'committed', 'complete')").bind(parcel).first()) return { s: 409, why: 'This parcel is already built on or under construction.' };
+  }
+  if(D.once && await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND def = ?2 AND status IN ('active', 'committed', 'complete')").bind(uid, def).first()) return { s: 409, why: 'You already have one of these.' };
+  if(D.law && !(await govLaws(env, now)).laws.some(l => l.id === D.law && l.state === 'ACTIVE')) return { s: 403, why: 'Needs a passed motion at CompleX.' };
+  const reserved = {}, lockOp = D.opLock(key), unlockOp = D.opUnlock(key), done = [];
+  for(const [a, n] of Object.entries(D.recipe)){
+    const q = BigInt(n * UNIT), r = await walletApply(env, uid, lockOp(a), { [a]: -q }, { [a]: q }, { lk: 'LOCK', asset: a, qty: q.toString(), src: 'build', key });
+    if(!r.ok){ for(const [b, qb] of done) await walletApply(env, uid, unlockOp(b), { [b]: qb }, { [b]: -qb }, { lk: 'UNLOCK', asset: b, qty: qb.toString(), src: 'build', key }); return { s: 409, why: r.why }; }
+    done.push([a, q]); reserved[a] = q.toString();
+  }
+  const secs = D.secs * 1000, row = { started: now, commit_at: now + Math.round(secs * D.commitPct), ends: now + secs };
+  await env.DB.prepare('INSERT OR IGNORE INTO xl_builds (uid, key, def, parcel, name, started, commit_at, ends, reserved, status, updated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?6)')
+    .bind(uid, key, def, parcel || null, String(name || '').slice(0, 32) || null, now, row.commit_at, row.ends, JSON.stringify(reserved), 'active').run();
+  return { s: 200, build: buildOut(await buildGet(env, uid, key)) };
+}
+async function buildCommit(env, uid, b, now){
+  if(b.status !== 'active') return { s: 409, why: `This build site is ${b.status}.` };
+  if(now < Number(b.commit_at)) return { s: 409, why: 'The foundation is not finished yet.' };
+  const D = BUILDS[b.def], op = D.opConsume(b.key), reserved = JSON.parse(b.reserved);
+  const r = await env.DB.prepare("UPDATE xl_builds SET status = 'committed', updated = ?3 WHERE uid = ?1 AND key = ?2 AND status = 'active'").bind(uid, b.key, now).run();
+  if(!r.meta.changes) return { s: 409, why: 'This build site was already committed.' };
+  for(const [a, q] of Object.entries(reserved)){
+    await walletApply(env, uid, op(a), null, { [a]: -BigInt(q) }, { lk: 'CONSUME', asset: a, qty: q, src: 'build', key: b.key });
+    if(a === 'quarx') await addWorld(env, 'quarx_consumed', Number(q));
+  }
+  return { s: 200, build: buildOut(await buildGet(env, uid, b.key)) };
+}
+/* ---------------- The Xiberal Assembly held by the server (r53) ----------------
+   A proposal's times and quorum are fixed by the server when it is published; a ballot counts only if the server
+   recorded it while the voting window was open and the voter was a resident at that moment. Every client reads the
+   same tally from the server. Law ids and their rollback policy mirror LAWDEF in index.html. */
+const GOVS = { policyVersion: 'gov-srv-1', eligibility: 'resident', discussSecs: 300, votingSecs: 7200, timelockSecs: 120, quorumPct: 25, eligibleWindowDays: 14, maxOpenPerCitizen: 3 };
+const LAWS = { 'permit-special': { reversible: false }, 'forgex-logistics': { reversible: true }, 'quarry-capacity': { reversible: true }, 'burn-fees': { reversible: false } };
+const CHOICES = ['yes', 'no', 'abstain'];
+function proposalLaw(type){ if(LAWS[type]) return { law: type, repeal: false }; if(type.startsWith('repeal-') && LAWS[type.slice(7)]) return { law: type.slice(7), repeal: true }; return null; }
+/* A resident holds a home: a Homax or a parcel paid for on the server, or a parcel claimed in the shared world. */
+async function isResident(env, uid){
+  if(await env.DB.prepare("SELECT 1 FROM xl_ledger WHERE uid = ?1 AND (op = 'homax-acquire' OR op LIKE 'parcel-%') LIMIT 1").bind(uid).first()) return true;
+  const { results } = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'claims' AND owner = ?1 LIMIT 20").bind(uid).all();
+  return results.some(r => { try { return JSON.parse(r.data).owner === uid; } catch { return false; } });
+}
+async function eligibleCount(env, now){
+  const since = now - GOVS.eligibleWindowDays * 86400000;
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM xl_docs c WHERE c.col = 'citizens' AND c.updated_at > ?1 AND (
+      EXISTS (SELECT 1 FROM xl_ledger l WHERE l.uid = c.id AND (l.op = 'homax-acquire' OR l.op LIKE 'parcel-%'))
+      OR EXISTS (SELECT 1 FROM xl_docs k WHERE k.col = 'claims' AND k.owner = c.id))`).bind(since).first();
+  return r ? Number(r.n) : 0;
+}
+const quorumFor = n => Math.max(1, Math.ceil(n * GOVS.quorumPct / 100));
+function govTally(p, votes){
+  const v = { yes: 0, no: 0, abstain: 0 };
+  votes.forEach(b => { if(b.pid === p.pid && b.at >= p.voting_at && b.at <= p.closes_at && v[b.choice] !== undefined) v[b.choice]++; });
+  const irr = !LAWS[p.law].reversible && !proposalLaw(p.type).repeal, cast = v.yes + v.no + v.abstain;
+  const quorum = cast >= Number(p.quorum), threshold = irr ? (v.yes + v.no > 0 && v.yes * 3 >= (v.yes + v.no) * 2) : v.yes > v.no;
+  return { counts: v, cast, quorum, quorumNeeded: Number(p.quorum), threshold, supermajority: irr, passed: quorum && threshold };
+}
+function govPhase(p, tally, now){ if(now < p.voting_at) return 'DELIBERATION'; if(now < p.closes_at) return 'VOTING'; if(!tally.passed) return 'REJECTED'; if(now < p.execute_at) return 'EXECUTION_PENDING'; return 'DECIDED'; }
+async function govLaws(env, now){
+  const { results: ps } = await env.DB.prepare('SELECT * FROM xl_proposals ORDER BY published').all();
+  const { results: bs } = await env.DB.prepare('SELECT pid, uid, choice, at FROM xl_ballots').all();
+  const votes = bs.map(b => ({ pid: b.pid, uid: b.uid, choice: b.choice, at: Number(b.at) }));
+  const rows = ps.map(p => ({ ...p, published: Number(p.published), voting_at: Number(p.voting_at), closes_at: Number(p.closes_at), execute_at: Number(p.execute_at) }));
+  rows.forEach(p => { p.tally = govTally(p, votes); p.phase = govPhase(p, p.tally, now); });
+  const laws = [], results = {};
+  rows.filter(p => p.phase === 'DECIDED').sort((a, b) => a.execute_at - b.execute_at || a.published - b.published).forEach(p => {
+    const active = laws.find(l => l.id === p.law && l.state === 'ACTIVE');
+    if(proposalLaw(p.type).repeal){ if(!active){ results[p.pid] = { r: 'FAILED_EXECUTION', err: 'That law is not active.' }; return; } active.state = 'REPEALED'; active.repealedAt = p.execute_at; }
+    else { if(active){ results[p.pid] = { r: 'FAILED_EXECUTION', err: 'That law is already active.' }; return; }
+      laws.push({ id: p.law, version: laws.filter(x => x.id === p.law).length + 1, state: 'ACTIVE', effectiveAt: p.execute_at, proposalId: p.pid }); }
+    results[p.pid] = { r: 'EXECUTED' }; });
+  return { proposals: rows, votes, laws, results };
+}
+function proposalOut(p, me, votes, results){
+  const content = JSON.parse(p.content), mine = votes.find(b => b.pid === p.pid && b.uid === me);
+  return { pid: p.pid, uid: p.uid, type: p.type, law: p.law, ...content, publishedAt: p.published, votingAt: p.voting_at, closesAt: p.closes_at, executeAt: p.execute_at, quorum: Number(p.quorum), policyVersion: p.policy,
+    tally: p.tally, phase: p.phase, result: results[p.pid] || null, myVote: mine ? { choice: mine.choice, at: mine.at } : null };
 }
 
 let schemaReady = false;
@@ -342,7 +449,8 @@ async function api(req, env, url){
   if(p === '/api/farm/start' && req.method === 'POST'){
     const slot = q.get('slot') === 'own' ? 'own' : 'field', kind = q.get('kind'), f = FARM[kind];
     if(!f) return fail(400, 'Choose what to produce.');
-    if(slot === 'own' && !(await env.DB.prepare("SELECT 1 FROM xl_ledger WHERE uid = ?1 AND op LIKE 'proj-%consume%'").bind(me.uid).first())) return fail(403, 'Your own plot needs a finished farmstead.');
+    if(slot === 'own' && !(await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND def = 'farmstead' AND status = 'complete'").bind(me.uid).first())
+      && !(await env.DB.prepare("SELECT 1 FROM xl_ledger WHERE uid = ?1 AND op LIKE 'proj-%consume%'").bind(me.uid).first())) return fail(403, 'Your own plot needs a finished farmstead.');   // r53: finished on the server; farmsteads committed before r53 keep their plot (the page can no longer write such entries)
     const open = await env.DB.prepare('SELECT * FROM xl_plots WHERE uid = ?1 AND slot = ?2').bind(me.uid, slot).first();
     if(open) return json({ok:true, now, start: Number(open.started), end: Number(open.ends), out: Number(open.out), kind: open.kind, op: open.op});
     const mult = Math.min(1, Math.max(0.5, Number(q.get('mult')) || 1));   // the page may only lower a yield (droughts, events)
@@ -361,6 +469,80 @@ async function api(req, env, url){
     const amount = BigInt(Number(pl.out) * UNIT);
     await walletApply(env, me.uid, pl.op, { [pl.kind]: amount }, null, { d: { [pl.kind]: amount.toString() }, src: 'harvest' });
     return json({ok:true, now, op: pl.op, kind: pl.kind, out: Number(pl.out)});
+  }
+
+  /* Construction timed by the server (r53) */
+  if(p === '/api/builds' && req.method === 'GET'){
+    const { results } = await env.DB.prepare('SELECT * FROM xl_builds WHERE uid = ?1 ORDER BY started DESC LIMIT 50').bind(me.uid).all();
+    return json({ok:true, now, builds: results.map(buildOut), recipes: Object.fromEntries(Object.entries(BUILDS).map(([k, d]) => [k, { territory: d.territory, recipe: d.recipe, secs: d.secs, commitPct: d.commitPct, law: d.law || null, once: !!d.once }]))});
+  }
+  if(p === '/api/build/start' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    const r = await buildStart(env, me.uid, q.get('def') || '', q.get('key') || '', q.get('parcel') || '', q.get('name') || '', now);
+    return r.s === 200 ? json({ok:true, now, build: r.build}) : fail(r.s, r.why);
+  }
+  if(p.startsWith('/api/build/') && req.method === 'POST' && ['cancel', 'commit', 'done'].includes(p.slice(11))){
+    const act = p.slice(11), b = await buildGet(env, me.uid, q.get('key') || '');
+    if(!b) return fail(404, 'No such build site.');
+    if(act === 'cancel'){
+      if(b.status !== 'active') return fail(409, `This build site is ${b.status}.`);
+      if(now >= Number(b.commit_at)) return fail(409, 'The resources are committed: the foundation is finished.');
+      const r = await env.DB.prepare("UPDATE xl_builds SET status = 'released', updated = ?3 WHERE uid = ?1 AND key = ?2 AND status = 'active'").bind(me.uid, b.key, now).run();
+      if(!r.meta.changes) return fail(409, 'This build site changed. Look again.');
+      const op = BUILDS[b.def].opUnlock(b.key);
+      for(const [a, qq] of Object.entries(JSON.parse(b.reserved))) await walletApply(env, me.uid, op(a), { [a]: BigInt(qq) }, { [a]: -BigInt(qq) }, { lk: 'UNLOCK', asset: a, qty: qq, src: 'build', key: b.key });
+      return json({ok:true, now, build: buildOut(await buildGet(env, me.uid, b.key))});
+    }
+    if(act === 'commit'){ const r = await buildCommit(env, me.uid, b, now); return r.s === 200 ? json({ok:true, now, build: r.build}) : fail(r.s, r.why); }
+    // done: completes only after the server's end time; commits first if the page never asked
+    if(b.status === 'complete') return json({ok:true, now, build: buildOut(b)});
+    if(b.status === 'released') return fail(409, 'This build site was cancelled.');
+    if(now < Number(b.ends)) return fail(409, 'Construction is not finished yet.');
+    if(b.status === 'active'){ const r = await buildCommit(env, me.uid, b, now); if(r.s !== 200) return fail(r.s, r.why); }
+    const r = await env.DB.prepare("UPDATE xl_builds SET status = 'complete', updated = ?3 WHERE uid = ?1 AND key = ?2 AND status = 'committed'").bind(me.uid, b.key, now).run();
+    if(r.meta.changes) await addWorld(env, 'buildings', 1);
+    return json({ok:true, now, build: buildOut(await buildGet(env, me.uid, b.key))});
+  }
+
+  /* The Xiberal Assembly held by the server (r53) */
+  if(p === '/api/gov' && req.method === 'GET'){
+    const g = await govLaws(env, now), eligible = await eligibleCount(env, now);
+    return json({ok:true, now, policy: GOVS, eligible, quorumNext: quorumFor(eligible), me: { eligible: await isResident(env, me.uid) },
+      proposals: g.proposals.map(x => proposalOut(x, me.uid, g.votes, g.results)), laws: g.laws});
+  }
+  if(p === '/api/gov/propose' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    let body; try { body = await req.json(); } catch { return fail(400, 'Invalid request.'); }
+    const type = String((body || {}).type || ''), pl = proposalLaw(type);
+    if(!pl) return fail(400, 'That kind of proposal does not exist.');
+    if(!(await isResident(env, me.uid))) return fail(403, 'Needs residency: only a citizen with a home in Xland may propose.');
+    const g = await govLaws(env, now), active = g.laws.some(l => l.id === pl.law && l.state === 'ACTIVE');
+    if(pl.repeal && !LAWS[pl.law].reversible) return fail(409, 'That law is not reversible under its rollback policy.');
+    if(pl.repeal ? !active : active) return fail(409, pl.repeal ? 'That law is not active.' : 'That law is already active.');
+    const open = g.proposals.filter(x => ['DELIBERATION', 'VOTING', 'EXECUTION_PENDING'].includes(x.phase));
+    if(open.some(x => x.type === type)) return fail(409, 'A proposal of this kind is already before the Assembly.');
+    if(open.filter(x => x.uid === me.uid).length >= GOVS.maxOpenPerCitizen) return fail(429, `You already have ${GOVS.maxOpenPerCitizen} proposals before the Assembly.`);
+    const c = (body || {}).content || {}, content = { title: String(c.title || type).slice(0, 120), current: String(c.current || '').slice(0, 160), proposed: String(c.proposed || '').slice(0, 160), rationale: String(c.rationale || '').slice(0, 160), authority: String(c.authority || '').slice(0, 200), hash: String((body || {}).hash || '').slice(0, 16), proposerHandle: String(c.proposerHandle || '').slice(0, 40) };
+    const pid = 'XA-' + now.toString(36).toUpperCase() + Math.random().toString(36).slice(2, 4).toUpperCase();
+    const G = env.XLAND_DEV === '1' ? { discussSecs: 3, votingSecs: 6, timelockSecs: 3 } : GOVS;   // the local test server runs a short Assembly; never set on xland.world
+    const t = { voting: now + G.discussSecs * 1000, closes: now + (G.discussSecs + G.votingSecs) * 1000, execute: now + (G.discussSecs + G.votingSecs + G.timelockSecs) * 1000 };
+    await env.DB.prepare('INSERT INTO xl_proposals (pid, uid, type, law, content, published, voting_at, closes_at, execute_at, quorum, policy) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)')
+      .bind(pid, me.uid, type, pl.law, JSON.stringify(content), now, t.voting, t.closes, t.execute, quorumFor(await eligibleCount(env, now)), GOVS.policyVersion).run();
+    const g2 = await govLaws(env, now), row = g2.proposals.find(x => x.pid === pid);
+    return json({ok:true, now, proposal: proposalOut(row, me.uid, g2.votes, g2.results)});
+  }
+  if(p === '/api/gov/vote' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    const pid = q.get('pid') || '', choice = q.get('choice') || '';
+    if(!ID_RE.test(pid) || !CHOICES.includes(choice)) return fail(400, 'Invalid ballot.');
+    const row = await env.DB.prepare('SELECT * FROM xl_proposals WHERE pid = ?1').bind(pid).first();
+    if(!row) return fail(404, 'No such proposal.');
+    if(now < Number(row.voting_at)) return fail(409, 'Deliberation is still open; voting has not started.');
+    if(now > Number(row.closes_at)) return fail(409, 'The voting window has closed.');
+    if(!(await isResident(env, me.uid))) return fail(403, 'Needs residency: only a citizen with a home in Xland may vote.');
+    await env.DB.prepare('INSERT INTO xl_ballots (pid, uid, choice, at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(pid, uid) DO UPDATE SET choice = excluded.choice, at = excluded.at').bind(pid, me.uid, choice, now).run();
+    const g = await govLaws(env, now);
+    return json({ok:true, now, proposal: proposalOut(g.proposals.find(x => x.pid === pid), me.uid, g.votes, g.results)});
   }
 
   if(p === '/api/bux/sandbox' && req.method === 'POST'){

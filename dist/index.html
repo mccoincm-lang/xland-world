@@ -1260,7 +1260,7 @@ const PTYPES = [
 const PT = Object.fromEntries(PTYPES.map(t=>[t.id,t]));
 function repealTypes(st){ return (st.laws||[]).filter(l=>l.state==='ACTIVE'&&LAWDEF[l.id].reversible).map(l=>({id:'repeal-'+l.id, type:'Law', handler:'law.repeal', arg:l.id, title:`Repeal: ${LAWDEF[l.id].name}`, authority:'Governance Constitution v1.0 §16 Law lifecycle: repeal of a reversible law', impact:['Restores the previous rule'], risk:'The change applies from now on; history is not rewritten.'})); }
 function ptypeOf(id, st){ return PT[id] || repealTypes(st||state).find(t=>t.id===id) || (id.startsWith('repeal-')?{id, type:'Law', handler:'law.repeal', arg:id.slice(7), title:`Repeal: ${(LAWDEF[id.slice(7)]||{}).name}`, authority:'§16', impact:[], risk:''}:null); }
-function govCapabilities(st){ st=st||state; const elig=LIDX(st.identity)>=LIDX(GOV.eligibility);
+function govCapabilities(st){ st=st||state; const elig=(st===state&&social.govSrv)?!!social.govSrv.me.eligible:LIDX(st.identity)>=LIDX(GOV.eligibility);
   return [['VIEW_PROPOSAL',true,'Public proposals are visible to everyone.'],['DELIBERATE',elig,elig?'Residents may deliberate (sandbox policy).':'Needs residency under the sandbox policy.'],
    ['CREATE_DRAFT',elig,elig?'Allowed.':'Needs residency.'],['SUBMIT_PROPOSAL',elig,elig?'Allowed. No deposit: the deposit rule is TBD.':'Needs residency.'],
    ['VOTE',elig,elig?`Allowed. Weight strategy: ${GOV.weightStrategy}.`:'Needs residency. Logging in or holding Lex never grants a vote.'],['DELEGATE',false,'Delegation is disabled; its rules are TBD.'],['EXECUTE_OUTCOME',false,'Only the executor service applies passed outcomes.']]; }
@@ -1732,7 +1732,9 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
    The server applies only valid operations. When the outbox is empty and the page has mirrored everything the server
    did (seams, harvests, market settlements), the page aligns its balances with the server's, recording any difference
    as an adjustment so the ledger still adds up. */
-const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-'];
+const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-'];   // r53: build sites are reserved, committed and released by the server
+/* Construction timed by the server (r53): the page asks the server first and only then mirrors the reservation locally. */
+async function srvBuild(path){ try{ return await serverBE.call('POST',path); }catch(e){ toast(e.message||'The build site could not be reached.'); throw e; } }
 function outboxPush(body){ if(!state.passport || SERVER_CREDITED.some(p=>body.op.startsWith(p))) return; state.outbox=state.outbox||[]; state.outbox.push(body); clearTimeout(outboxPush.t); outboxPush.t=setTimeout(()=>walletSync(), 1200); }
 function adjustToServer(st, srv){ let ch=false;
   ASSETS.forEach(a=>{ const sa=BigInt(srv.bal[a.id]||'0'), sl=BigInt(srv.locked[a.id]||'0'), la=BigInt(st.bal[a.id]||'0'), ll=BigInt((st.locked||{})[a.id]||'0');
@@ -1802,7 +1804,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r52';
+const BUILD = 'r53';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1822,8 +1824,10 @@ async function socialInit(db, uid, u){
   const err=()=>{};
   db.collection('citizens').onSnapshot(sn=>{ social.citizens=sn.docs.filter(d=>d.exists).map(d=>Object.assign({id:d.id}, clonePlain(d.data()))); socialChanged(); }, err);
   db.collection('posts').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.posts=m; socialChanged(); }, err);
-  db.collection('gov').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.gov=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
-  db.collection('ballots').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.ballots=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
+  if(!serverMode){   // the Assembly held by the server replaces the gov and ballots documents (r53)
+    db.collection('gov').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.gov=m; if(syncSharedLaws()) save(); socialChanged(); }, err);
+    db.collection('ballots').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.ballots=m; if(syncSharedLaws()) save(); socialChanged(); }, err); }
+  else { govSync(); setInterval(()=>{ if(document.visibilityState!=='hidden') govSync(); }, 15000); }
   db.collection('shops').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.shops=m; socialChanged(); }, err);
   if(serverMode) serverBE.call('GET','/coops').then(k=>{ market.coops=k.coops||{}; socialChanged(); }).catch(()=>{});
   db.collection('claims').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.claims=m; socialChanged(); backfillClaims(); }, err);
@@ -1855,10 +1859,10 @@ const GOVS = { policyVersion:'gov-shared-1', discussSecs:300, votingSecs:7200, t
 social.gov = {}; social.ballots = {};
 const sharedMode = () => !!social.db;
 function sharedProposals(){ const out=[]; Object.entries(social.gov).forEach(([uid,d])=>(d.proposals||[]).forEach(p=>out.push(Object.assign({uid},p)))); return out.sort((a,b)=>a.publishedAt-b.publishedAt); }
-function eligibleCitizenCount(){ const n=Date.now(); const others=social.citizens.filter(c=>c.id!==social.me && LIDX(c.identity||'visitor')>=LIDX(GOV.eligibility) && n-(c.lastSeen||0)<GOVS.eligibleWindowDays*86400000).length; return others + (LIDX(state.identity)>=LIDX(GOV.eligibility)?1:0); }
+function eligibleCitizenCount(){ if(social.govSrv) return social.govSrv.eligible; const n=Date.now(); const others=social.citizens.filter(c=>c.id!==social.me && LIDX(c.identity||'visitor')>=LIDX(GOV.eligibility) && n-(c.lastSeen||0)<GOVS.eligibleWindowDays*86400000).length; return others + (LIDX(state.identity)>=LIDX(GOV.eligibility)?1:0); }
 function quorumFor(n){ return Math.max(1, Math.ceil(n*GOVS.quorumPct/100)); }
 function sharedTally(p){ const v={yes:0,no:0,abstain:0};
-  Object.values(social.ballots).forEach(bl=>{ const x=(bl.votes||{})[p.pid]; if(x && x.at>=p.votingAt && x.at<=p.closesAt && LIDX(x.identity||'visitor')>=LIDX(GOV.eligibility) && v[x.choice]!==undefined) v[x.choice]++; });
+  if(p.tally) Object.assign(v,p.tally.counts); else Object.values(social.ballots).forEach(bl=>{ const x=(bl.votes||{})[p.pid]; if(x && x.at>=p.votingAt && x.at<=p.closesAt && LIDX(x.identity||'visitor')>=LIDX(GOV.eligibility) && v[x.choice]!==undefined) v[x.choice]++; });
   const T=ptypeOf(p.type,{laws:[]}), H=T&&HANDLERS[T.handler], irr=!!(H&&H.law&&LAWDEF[H.law]&&!LAWDEF[H.law].reversible), cast=v.yes+v.no+v.abstain;
   const quorum=cast>=(p.quorum||1), threshold=irr?(v.yes+v.no>0&&v.yes*3>=(v.yes+v.no)*2):v.yes>v.no;
   return {counts:v, cast, quorum, quorumNeeded:p.quorum||1, threshold, supermajority:irr, passed:quorum&&threshold, policyVersion:p.policyVersion||GOVS.policyVersion}; }
@@ -1871,6 +1875,15 @@ function computeSharedLaws(){ const laws=[], st={laws, ledger:[]}, now=Date.now(
     else { laws.filter(x=>x.id===H.law&&x.state==='ACTIVE').forEach(x=>x.state='SUPERSEDED'); laws.push({id:H.law, scope:LAWDEF[H.law].scope, authority:'Xiberal Assembly (shared)', version:laws.filter(x=>x.id===H.law).length+1, state:'ACTIVE', effectiveAt:p.executeAt, proposalId:p.pid}); }
     results[p.pid]={r:'EXECUTED'}; });
   return {laws, results}; }
+/* The Assembly held by the server (r53): proposals, tallies, phases and the law set come from /api/gov; this page only mirrors them. */
+async function govSync(){ if(!serverBE||!social.me||govSync.busy) return; govSync.busy=true;
+  try{ const j=await serverBE.call('GET','/gov'), off=Date.now()-j.now;
+    social.govSrv={ eligible:j.eligible, quorumNext:j.quorumNext, me:j.me||{}, laws:j.laws||[], policy:j.policy,
+      proposals:(j.proposals||[]).map(p=>Object.assign({}, p, {publishedAt:p.publishedAt+off, votingAt:p.votingAt+off, closesAt:p.closesAt+off, executeAt:p.executeAt+off})) };
+    const votes={}; social.govSrv.proposals.forEach(p=>{ if(p.myVote) votes[p.pid]={choice:p.myVote.choice, at:p.myVote.at+off, identity:state.identity, policy:p.policyVersion}; });
+    social.ballots={[social.me]:{votes}}; social.gov={server:{proposals:social.govSrv.proposals}};
+    if(syncSharedLaws()) save(); socialChanged(); const {route,arg}=parse(); if(route==='place'&&(arg==='complex'||arg==='civicsite')) render();
+  }catch(e){} govSync.busy=false; }
 /* Every client applies the shared law set to its own simulation, once per law, and records it in its own Chronicle. */
 function syncSharedLaws(){ if(!sharedMode()) return false; let ch=false;
   if(!state.localLawsArchived){ state.localLaws=(state.laws||[]).slice(); state.localLawsArchived=true; ch=true; }
@@ -4317,15 +4330,19 @@ document.addEventListener('click', e=>{
     case 'parcel-unlist': { const rt=rightFor(state,id); if(rt){ delete rt.listing; save(); render(); } break; }
     case 'proj-start': { const rt=rightFor(state,id), D=BUILDING_DEFS.farmstead; if(!rt||!rt.rights.includes('Construct: Farmstead')||!here('farmx')||state.projects.some(x=>x.parcel===id&&x.status==='active')||state.buildings.some(b=>b.parcel===id)) return;
       const key='proj-'+id+'-'+Date.now().toString(36), q=BigInt(D.recipe.quarx)*UNIT, bx=BigInt(D.recipe.bux)*UNIT;
-      if(!lockLedger(state,key+'-lock-quarx','LOCK','quarx',q,`Reserved for a Farmstead on ${id}`,id)){ toast('Not enough QuarX.'); return; }
-      if(!lockLedger(state,key+'-lock-bux','LOCK','bux',bx,`Reserved for a Farmstead on ${id}`,id)){ lockLedger(state,key+'-unlock-quarx','UNLOCK','quarx',q,'Released: not enough BuX',id); toast('Not enough BuX.'); save(); return; }
-      const t=Date.now(); state.projects.push({id:key, key, def:'farmstead', parcel:id, start:t, end:t+D.secs*1000, commitAt:t+D.secs*1000*D.commitPct, reserved:{quarx:q.toString(), bux:bx.toString()}, committed:false, status:'active'});
-      emit('BUILD_RESERVED',{parcel:id}); save(); render(); toast('Resources reserved. Construction begins.'); break; }
+      if(BigInt(state.bal.quarx)<q){ toast('Not enough QuarX.'); return; } if(BigInt(state.bal.bux)<bx){ toast('Not enough BuX.'); return; }
+      const begin=(t,end,commitAt)=>{ lockLedger(state,key+'-lock-quarx','LOCK','quarx',q,`Reserved for a Farmstead on ${id}`,id); lockLedger(state,key+'-lock-bux','LOCK','bux',bx,`Reserved for a Farmstead on ${id}`,id);
+        state.projects.push({id:key, key, def:'farmstead', parcel:id, start:t, end, commitAt, reserved:{quarx:q.toString(), bux:bx.toString()}, committed:false, status:'active', server:serverMode});
+        emit('BUILD_RESERVED',{parcel:id}); save(); render(); toast('Resources reserved. Construction begins.'); };
+      if(serverMode){ srvBuild('/build/start?def=farmstead&parcel='+encodeURIComponent(id)+'&key='+encodeURIComponent(key)).then(j=>{ const off=Date.now()-j.now, b=j.build; begin(b.start+off, b.end+off, b.commitAt+off); }); break; }
+      const t=Date.now(); begin(t, t+D.secs*1000, t+D.secs*1000*D.commitPct); break; }
     case 'proj-cancel': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.committed||pr.status!=='active') return;
-      Object.entries(pr.reserved).forEach(([a,q])=>lockLedger(state,pr.key+'-unlock-'+a,'UNLOCK',a,BigInt(q),`Released: Farmstead on ${pr.parcel} cancelled before commitment`,pr.parcel)); pr.status='released'; emit('BUILD_FAILED',{parcel:pr.parcel}); save(); render(); toast('Construction cancelled. Resources released.'); break; }
-    case 'proj-done': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.status!=='active'||Date.now()<pr.end) return; projectCommit(state,pr);
-      pr.status='complete'; state.buildings.push({id:'bld-'+pr.parcel, def:pr.def, parcel:pr.parcel, at:Date.now(), version:BUILDING_DEFS[pr.def].version});
-      emit('BUILD_COMPLETED',{parcel:pr.parcel}); chron('BuildingCompleted',`Farmstead raised on ${pr.parcel}`,'A new productive building stands in FarmX. It opens your own plot at the fields.','farmx','notable'); save(); render(); toast('Farmstead complete. Your own plot is open.'); break; }
+      const release=()=>{ Object.entries(pr.reserved).forEach(([a,q])=>lockLedger(state,pr.key+'-unlock-'+a,'UNLOCK',a,BigInt(q),`Released: Farmstead on ${pr.parcel} cancelled before commitment`,pr.parcel)); pr.status='released'; emit('BUILD_FAILED',{parcel:pr.parcel}); save(); render(); toast('Construction cancelled. Resources released.'); };
+      if(pr.server){ srvBuild('/build/cancel?key='+encodeURIComponent(pr.key)).then(release); break; } release(); break; }
+    case 'proj-done': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.status!=='active'||Date.now()<pr.end) return;
+      const finish=()=>{ projectCommit(state,pr); pr.status='complete'; state.buildings.push({id:'bld-'+pr.parcel, def:pr.def, parcel:pr.parcel, at:Date.now(), version:BUILDING_DEFS[pr.def].version});
+        emit('BUILD_COMPLETED',{parcel:pr.parcel}); chron('BuildingCompleted',`Farmstead raised on ${pr.parcel}`,'A new productive building stands in FarmX. It opens your own plot at the fields.','farmx','notable'); save(); render(); toast('Farmstead complete. Your own plot is open.'); };
+      if(pr.server){ srvBuild('/build/done?key='+encodeURIComponent(pr.key)).then(()=>{ pr.commitAt=Math.min(pr.commitAt,Date.now()); finish(); }); break; } finish(); break; }
     case 'homax-buy': { if(!here('ximberland')||state.homes.length) return; const price=BigInt(SIM.homaxPrice)*UNIT;
       if(!postLedger(state,'homax-acquire',[['bux',-price]],'Homax acquired in Ximberland','homax')){ toast('Not enough BuX.'); return; }
       state.homes.push({id:'homax-1', region:'ximberland', basis:price.toString(), at:Date.now()}); state.identity='resident';
@@ -4342,16 +4359,20 @@ document.addEventListener('click', e=>{
     case 'homax-unlist': state.listing=null; save(); render(); break;
     case 'build-start': { if(!here('xetropolitan')||state.construct||state.builds.length||!lawOn('permit-special')) return; const need=BigInt(SIM.monumentQuarx)*UNIT;
       const name=(($('#bd-name')&&$('#bd-name').value)||'').trim().slice(0,32)||'Monument of the First Settlers';
-      const k=Date.now().toString(36), op='build-lock-'+k;
-      if(!lockLedger(state,op,'LOCK','quarx',need,`QuarX reserved for construction: ${name}`,'civicsite')){ toast('Not enough QuarX.'); return; }
-      const t=Date.now(); state.construct={name,start:t,end:t+SIM.monumentSecs*1000,op,key:k,reserved:need.toString()}; save(); render(); toast('QuarX reserved. Construction started.'); break; }
-    case 'build-cancel': { const c=state.construct; if(!c||!c.reserved) return; lockLedger(state,'build-unlock-'+c.key,'UNLOCK','quarx',BigInt(c.reserved),`Construction cancelled before commitment: ${c.name}. QuarX returned.`,'civicsite');
-      state.construct=null; save(); render(); toast('Construction cancelled. QuarX returned.'); break; }
-    case 'build-done': { const c=state.construct; if(!c||Date.now()<c.end) return; if(c.reserved) useVested(state,BigInt(c.reserved));
-      if(c.reserved && !lockLedger(state,'build-consume-'+c.key,'CONSUME','quarx',BigInt(c.reserved),`QuarX consumed by construction: ${c.name}`,'civicsite','consumed:civicsite')) return;
-      state.builds.push({name:c.name, at:Date.now()}); state.construct=null;
-      chron('SpecialBuilding',`${c.name} raised in Xetropolitan`,`A Special Building now stands in the Civic plaza, built with ${SIM.monumentQuarx} QuarX.`,'xetropolitan','legacy');
-      save(); render(); toast(`${c.name} is complete.`); break; }
+      const k=Date.now().toString(36), op='build-lock-'+k; if(BigInt(state.bal.quarx)<need){ toast('Not enough QuarX.'); return; }
+      const begin=(t,end)=>{ lockLedger(state,op,'LOCK','quarx',need,`QuarX reserved for construction: ${name}`,'civicsite'); state.construct={name,start:t,end,op,key:k,reserved:need.toString(),server:serverMode}; save(); render(); toast('QuarX reserved. Construction started.'); };
+      if(serverMode){ srvBuild('/build/start?def=special&key='+encodeURIComponent(k)+'&name='+encodeURIComponent(name)).then(j=>{ const off=Date.now()-j.now; begin(j.build.start+off, j.build.end+off); }); break; }
+      const t=Date.now(); begin(t, t+SIM.monumentSecs*1000); break; }
+    case 'build-cancel': { const c=state.construct; if(!c||!c.reserved) return;
+      const release=()=>{ lockLedger(state,'build-unlock-'+c.key,'UNLOCK','quarx',BigInt(c.reserved),`Construction cancelled before commitment: ${c.name}. QuarX returned.`,'civicsite'); state.construct=null; save(); render(); toast('Construction cancelled. QuarX returned.'); };
+      if(c.server){ srvBuild('/build/cancel?key='+encodeURIComponent(c.key)).then(release); break; } release(); break; }
+    case 'build-done': { const c=state.construct; if(!c||Date.now()<c.end) return;
+      const finish=()=>{ if(c.reserved) useVested(state,BigInt(c.reserved));
+        if(c.reserved && !lockLedger(state,'build-consume-'+c.key,'CONSUME','quarx',BigInt(c.reserved),`QuarX consumed by construction: ${c.name}`,'civicsite','consumed:civicsite')) return;
+        state.builds.push({name:c.name, at:Date.now()}); state.construct=null;
+        chron('SpecialBuilding',`${c.name} raised in Xetropolitan`,`A Special Building now stands in the Civic plaza, built with ${SIM.monumentQuarx} QuarX.`,'xetropolitan','legacy');
+        save(); render(); toast(`${c.name} is complete.`); };
+      if(c.server){ srvBuild('/build/done?key='+encodeURIComponent(c.key)).then(finish); break; } finish(); break; }
     case 'gov-draft': { if(!here('xetropolitan')||!govCapabilities()[2][1]||(sharedMode()&&id==='xcool-program')) return; state.govDraft={type:id, stage:'DRAFT', at:Date.now()}; emit('PROPOSAL_DRAFTED',{type:id}); save(); render(); break; }
     case 'gov-discard': state.govDraft=null; save(); render(); break;
     case 'gov-review': { const dr=state.govDraft; if(!dr) return; dr.rationale=(($('#gov-why')||{}).value||'').trim().slice(0,160); const T=ptypeOf(dr.type), H=HANDLERS[T.handler];
@@ -4360,9 +4381,12 @@ document.addEventListener('click', e=>{
     case 'gov-publish': { if(sharedMode()){ const dr=state.govDraft; if(!dr||dr.stage!=='REVIEW'||!dr.review.every(r=>r[1])) return; const T=ptypeOf(dr.type), H=HANDLERS[T.handler], t=Date.now();
         const content={type:dr.type, title:T.title, current:H.current(state,T.arg), proposed:H.proposed(state,T.arg), rationale:dr.rationale, authority:T.authority};
         const pid='XA-'+t.toString(36).toUpperCase(), prop=Object.assign({pid, version:1, hash:contentHash(content), proposerHandle:(state.privacy||{}).name!=='private'?state.handle:'', publishedAt:t, votingAt:t+GOVS.discussSecs*1000, closesAt:t+(GOVS.discussSecs+GOVS.votingSecs)*1000, executeAt:t+(GOVS.discussSecs+GOVS.votingSecs+GOVS.timelockSecs)*1000, quorum:quorumFor(eligibleCitizenCount()), policyVersion:GOVS.policyVersion}, content);
+        const published=(id2,quorum)=>{ state.govDraft=null; emit('PROPOSAL_PUBLISHED',{proposal:id2}); emit('DELIBERATION_STARTED',{proposal:id2}); emit('GOVERNANCE_ACTION_RECORDED',{action:'propose',proposal:id2});
+          chron('MotionProposed',`Proposal published to the shared Assembly: ${T.title}`,`${id2}, version 1. Quorum ${quorum}.`,'xetropolitan','ordinary'); save(); render(); toast('Published to the Assembly. Deliberation has begun.'); };
+        if(serverMode){ serverBE.call('POST','/gov/propose',{type:dr.type, hash:prop.hash, content:Object.assign({proposerHandle:prop.proposerHandle},content)})
+            .then(j=>{ published(j.proposal.pid, j.proposal.quorum); govSync(); }).catch(e=>{ toast('Could not publish: '+((e&&e.message)||'error')); render(); }); break; }
         const mine=clonePlain(social.gov[social.me]||{proposals:[]}); mine.proposals=(mine.proposals||[]).concat([prop]).slice(-40);
-        social.db.doc('gov/'+social.me).set(mine).then(()=>{ state.govDraft=null; emit('PROPOSAL_PUBLISHED',{proposal:pid}); emit('DELIBERATION_STARTED',{proposal:pid}); emit('GOVERNANCE_ACTION_RECORDED',{action:'propose',proposal:pid});
-          chron('MotionProposed',`Proposal published to the shared Assembly: ${T.title}`,`${pid}, version 1. Quorum ${prop.quorum}.`,'xetropolitan','ordinary'); save(); render(); toast('Published to the Assembly. Deliberation has begun.'); })
+        social.db.doc('gov/'+social.me).set(mine).then(()=>published(pid,prop.quorum))
           .catch(e=>{ if(e&&e.code==='invalid_argument'){ social.writable=false; } toast('Could not publish: '+((e&&e.message)||'error')); render(); }); break; }
       const dr=state.govDraft; if(!dr||dr.stage!=='REVIEW'||!dr.review.every(r=>r[1])) return; const T=ptypeOf(dr.type), H=HANDLERS[T.handler], t=Date.now();
       const content={type:dr.type, title:T.title, current:H.current(state,T.arg), proposed:H.proposed(state,T.arg), rationale:dr.rationale, authority:T.authority};
@@ -4372,6 +4396,8 @@ document.addEventListener('click', e=>{
     case 'gov-vote': { if(sharedMode()){ const sp=sharedProposals().find(x=>x.pid===id), c=b.dataset.v; if(!sp||sharedPhase(sp)!=='VOTING'||!govCapabilities()[4][1]||!['yes','no','abstain'].includes(c)) return;
         const mine=clonePlain(social.ballots[social.me]||{votes:{}}); mine.votes=mine.votes||{}; const replaced=!!mine.votes[id]; if(replaced&&mine.votes[id].choice===c) return;
         mine.votes[id]={choice:c, at:Date.now(), identity:state.identity, policy:GOVS.policyVersion};
+        if(serverMode){ serverBE.call('POST',`/gov/vote?pid=${encodeURIComponent(id)}&choice=${c}`).then(()=>{ emit(replaced?'VOTE_REPLACED':'VOTE_RECORDED',{proposal:id, choice:c}); emit('GOVERNANCE_ACTION_RECORDED',{action:'vote',proposal:id}); save(); toast(`Vote recorded: ${c}.`); govSync(); })
+            .catch(e=>toast('Could not vote: '+((e&&e.message)||'error'))); break; }
         social.db.doc('ballots/'+social.me).set(mine).then(()=>{ emit(replaced?'VOTE_REPLACED':'VOTE_RECORDED',{proposal:id, choice:c}); emit('GOVERNANCE_ACTION_RECORDED',{action:'vote',proposal:id}); save(); toast(`Vote recorded: ${c}.`); })
           .catch(e=>toast('Could not vote: '+((e&&e.message)||'error'))); break; }
       const p=state.proposals.find(x=>x.pid===id); const c=b.dataset.v; if(!p||p.status!=='VOTING'||!govCapabilities()[4][1]||!['yes','no','abstain'].includes(c)) return;
@@ -4516,7 +4542,8 @@ setInterval(()=>{
     const b=t.querySelector('.tbar span'); if(b) b.style.width=pct.toFixed(1)+'%'; const l=t.querySelector('.tleft'); if(l) l.textContent=fmtSecs(secsLeft(en));
     if(Date.now()>=en && !t.dataset.done){ t.dataset.done='1'; const a=$('#activity'), {route,arg}=parse(); if(a && route==='place') a.innerHTML=activity(PL[arg]); } });
   if(advanceProposals()){ save(); const {route,arg}=parse(); if(route==='place'&&arg==='complex'){ const a=$('#activity'); if(a) a.innerHTML=activity(PL.complex); } }
-  state.projects.filter(x=>x.status==='active'&&!x.committed&&Date.now()>=x.commitAt).forEach(x=>{ projectCommit(state,x); emit('BUILD_COMMITTED',{parcel:x.parcel}); save(); toast('Foundation complete: resources committed.'); });
+  state.projects.filter(x=>x.status==='active'&&!x.committed&&Date.now()>=x.commitAt&&!x.committing).forEach(x=>{ const commit=()=>{ x.committing=false; projectCommit(state,x); emit('BUILD_COMMITTED',{parcel:x.parcel}); save(); toast('Foundation complete: resources committed.'); };
+    if(x.server){ x.committing=true; srvBuild('/build/commit?key='+encodeURIComponent(x.key)).then(commit).catch(()=>{ x.committing=false; }); } else commit(); });
   [['plot','Harvest ready at the FarmX fields.'],['mine','QuarX ready to collect in Xalp.'],['construct','Construction complete in the Civic plaza.']].forEach(([k,msg])=>{
     const o=state[k]; if(o && Date.now()>=o.end && !state.notified[o.op]){ state.notified[o.op]=1; toast(msg); } });
 },1000);
