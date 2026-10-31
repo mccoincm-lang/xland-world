@@ -311,3 +311,4 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .hz-lab .input{max-width:340px}
 .ev-banner .hz{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .world-events .ev-banner .hz{background:rgba(40,16,10,.86)}
+.lot-h1{white-space:nowrap;font-size:clamp(2.3rem,6.4vw,4.2rem) !important}

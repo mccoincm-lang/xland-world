@@ -1000,6 +1000,7 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .hz-lab .input{max-width:340px}
 .ev-banner .hz{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .world-events .ev-banner .hz{background:rgba(40,16,10,.86)}
+.lot-h1{white-space:nowrap;font-size:clamp(2.3rem,6.4vw,4.2rem) !important}
 
 </style>
 </head>
@@ -3740,7 +3741,7 @@ function actHomax(){
     ${res?`<p class="lede" style="font-size:1rem;margin:1rem 0">Your residence: Homax on parcel <a class="link" href="#/parcel/${res.parcel||'XIM-R-01'}">${res.parcel||'XIM-R-01'}</a>, since ${fmtDate(res.at)}.</p>`:''}
     <div class="tbl" style="margin-top:1rem"><table><thead><tr><th>Parcel</th><th>Availability</th><th>Terms</th><th></th></tr></thead><tbody>${ps.filter(pp=>pp.building==='homax'||rightFor(state,pp.id)).concat(ps.filter(pp=>pp.lot&&lotState(pp)==='free'&&!rightFor(state,pp.id)).slice(0,6)).map(pp=>`<tr><td><b>${pp.id}</b></td><td>${parcelBadge(pp)}</td><td>${pp.price} BuX${pp.lot?', build your own Homax':', Homax included'} <span class="tag tag-prov">Simulation</span></td><td><a class="link" href="#/parcel/${pp.id}">Inspect</a></td></tr>`).join('')}</tbody></table></div><p class="meta" style="margin-top:.6rem">${ps.filter(pp=>pp.lot&&lotState(pp)==='free').length} forest lots are free. Choose Ximberland on the world map to see them all.</p>`;
 }
-function parcelBadge(pp){ const av=parcelAvail(pp), mine=rightFor(state,pp.id), cl=social.claims[pp.id]; if(!mine&&cl&&cl.owner&&cl.owner!==social.me) return `<span class="disc disc-2">Held by ${esc(cl.handle||'another citizen')}</span>`; return `<span class="disc ${mine?'disc-4':av==='AVAILABLE'?'disc-3':av==='LOCKED'||av==='RESTRICTED'?'':'disc-2'}">${mine?'Held by you':av}</span>`; }
+function parcelBadge(pp){ const av=parcelAvail(pp), mine=rightFor(state,pp.id), cl=social.claims[pp.id]; if(!mine&&cl&&cl.owner&&cl.owner!==social.me){ const ls=listingOf(pp.id); return ls?`<span class="disc disc-3">${esc(cl.handle||'A citizen')} sells · ${ls.price} BuX</span>`:`<span class="disc disc-2">Held by ${esc(cl.handle||'another citizen')}</span>`; } return `<span class="disc ${mine?'disc-4':av==='AVAILABLE'?'disc-3':av==='LOCKED'||av==='RESTRICTED'?'':'disc-2'}">${mine?'Held by you':av}</span>`; }
 function viewParcel(id){
   const pp=PBY[id]; if(!pp) return `<section class="page"><p class="lede">This parcel does not exist.</p></section>`;
   const r=R[pp.t], av=parcelAvail(pp), mine=rightFor(state,id), res=state.homes.find(h=>h.parcel===id), bld=state.buildings.find(b=>b.parcel===id), pr=state.projects.find(x=>x.parcel===id&&x.status!=='complete'&&x.status!=='released');
@@ -3770,7 +3771,7 @@ function viewParcel(id){
   else act=`<h2 class="act-h">${av}</h2><p class="meta">${esc(pp.note||'')}</p>`;
   return `<article class="page fade-in"><a class="back" href="#/region/${r.id}">${ICON.back} ${esc(r.name)}</a>${eventBanner(pp.t)}
     <div class="region-hero"><div><p class="dist-tag" style="--c:${pp.d?DISTRICTS[pp.d].c:'#888'}"><i></i>${pp.d?esc(DISTRICTS[pp.d].name)+', ':''}${esc(r.name)}</p>
-      <h1 class="display">${landWord(pp)} ${id}</h1><p>${parcelBadge(pp)}</p>
+      <h1 class="display lot-h1">${landWord(pp)} ${id}</h1><p>${parcelBadge(pp)}</p>
       <dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${pp.zoning.join(', ')}</dd><dt>Area</dt><dd>TBD</dd><dt>Territory law</dt><dd>${esc(TERR[pp.t].tax.note)}${TERR[pp.t].resaleFloor?` Resale floor: acquisition + ${TERR[pp.t].resaleFloor.deltaBuX} BuX${TERR[pp.t].hardship?', rising with time held':''}.`:''}</dd>${pp.building?`<dt>Building</dt><dd>Homax (residential)</dd>`:''}</dl>
       <div class="rights"><div><h3>Rights granted</h3><ul class="plain">${(pp.rights.length?pp.rights:['None']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><h3>Not granted</h3><ul class="plain">${(pp.excluded.length?pp.excluded:['Nothing listed']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div></div>
       <div class="mini scene" data-scene="region" data-focus="${pp.t}" data-point="${pp.at[0]},${pp.at[1]}" aria-hidden="true"></div></div>
