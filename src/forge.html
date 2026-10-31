@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Xland Forge</title>
+<style>
+:root{--bg:#0A1022;--panel:#111A33;--line:#26304D;--text:#EEF2FA;--muted:#A9B4CB;--gold:#D8BA7C;--ok:#67D8A0;--warn:#F2A65A;--bad:#F07070;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:32px 16px 64px}
+h1{font:600 2rem/1.2 Georgia,serif;margin:0 0 .3rem;color:var(--gold)}
+.lede{color:var(--muted);margin:0 0 1.5rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:0 0 12px}
+.warn{border-color:var(--warn)}
+.warn b{color:var(--warn)}
+.row{display:flex;gap:12px;align-items:flex-start}
+.n{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);color:var(--muted);font-weight:600;font-size:.9rem}
+.done .n{background:var(--ok);border-color:var(--ok);color:#06131D}
+.body{flex:1;min-width:0}
+.body h2{font-size:1.05rem;margin:.1rem 0 .2rem}
+.body p{margin:.2rem 0;color:var(--muted);font-size:.95rem}
+.addr{font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--text);overflow-wrap:anywhere}
+.addr a{color:var(--gold)}
+button{font:600 .95rem system-ui,sans-serif;padding:.6rem 1rem;border-radius:8px;border:0;background:var(--gold);color:#1A1205;cursor:pointer;margin-top:.6rem}
+button[disabled]{opacity:.45;cursor:not-allowed}
+button.quiet{background:none;border:1px solid var(--line);color:var(--text)}
+select{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem}
+.status{font-size:.9rem;margin-top:.4rem}
+.status.ok{color:var(--ok)}.status.bad{color:var(--bad)}
+.hidden{display:none}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (max-width:520px){h1{font-size:1.6rem}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Xland Forge</h1>
+  <p class="lede">Creates Xland's five tokens on Base from your own wallet. Every transaction is signed in your wallet; this page never sees a key.</p>
+
+  <div class="card warn" id="mainnet-warning">
+    <p><b>On Base mainnet these tokens are public and permanent.</b> Nothing is minted here: every supply starts at zero and only roles you grant later can mint. The connected wallet becomes the only admin of all five, so keep its recovery phrase offline. Admin can be handed to a Safe later without recreating anything.</p>
+  </div>
+
+  <div class="card" id="step-connect">
+    <div class="row"><span class="n">1</span><div class="body">
+      <h2>Connect the admin wallet</h2>
+      <p>Network <select id="net" aria-label="Network"><option value="8453">Base mainnet</option><option value="84532">Base Sepolia (free rehearsal)</option></select></p>
+      <p class="addr" id="who">Not connected.</p>
+      <button id="connect">Connect wallet</button>
+      <div class="status" id="connect-status" role="status"></div>
+    </div></div>
+  </div>
+
+  <div class="card" id="step-check"><div class="row"><span class="n">2</span><div class="body">
+    <h2>Check that Base supports B20 here</h2><p>Reads the activation registry. Costs nothing.</p>
+    <button data-step="check" disabled>Check</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-policy"><div class="row"><span class="n">3</span><div class="body">
+    <h2>Citizens list</h2><p>An allowlist you control. Only wallets on it can hold BuX. It starts empty.</p>
+    <p class="addr" data-out></p>
+    <button data-step="policy" disabled>Create the citizens list</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-quarx"><div class="row"><span class="n">4</span><div class="body">
+    <h2>QuarX</h2><p data-about></p><p class="addr" data-out></p>
+    <button data-step="quarx" disabled>Create QuarX</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-bux"><div class="row"><span class="n">5</span><div class="body">
+    <h2>BuX</h2><p data-about></p><p class="addr" data-out></p>
+    <button data-step="bux" disabled>Create BuX</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-lex"><div class="row"><span class="n">6</span><div class="body">
+    <h2>Lex</h2><p data-about></p><p class="addr" data-out></p>
+    <button data-step="lex" disabled>Create Lex</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-deeds"><div class="row"><span class="n">7</span><div class="body">
+    <h2>Xland Deeds</h2><p>One NFT per lot. Only the land office can move a deed, and the House on the River can never be minted.</p><p class="addr" data-out></p>
+    <button data-step="deeds" disabled>Deploy Xland Deeds</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-passport"><div class="row"><span class="n">8</span><div class="body">
+    <h2>Xland Passport</h2><p>One soulbound passport per citizen. It can never be transferred.</p><p class="addr" data-out></p>
+    <button data-step="passport" disabled>Deploy Xland Passport</button><div class="status" role="status"></div></div></div></div>
+
+  <div class="card" id="step-summary"><div class="row"><span class="n">9</span><div class="body">
+    <h2>Addresses</h2><p>Copy these and send them to Claude, so the site can show them and the next steps can use them.</p>
+    <p class="addr" id="summary">Nothing created yet.</p>
+    <button class="quiet" id="copy" disabled>Copy addresses</button><div class="status" role="status"></div></div></div></div>
+</main>
+<script>/*@ETHERS*/</script>
+<script>/*@FORGE_CORE*/</script>
+<script>
+const CONTRACTS = /*@CONTRACTS*/null;
+const F = XlandForge(ethers);
+const NETS = {
+  8453: {name:'Base mainnet', hex:'0x2105', rpc:'https://mainnet.base.org', scan:'https://basescan.org'},
+  84532: {name:'Base Sepolia', hex:'0x14a34', rpc:'https://sepolia.base.org', scan:'https://sepolia.basescan.org'}
+};
+const $ = s => document.querySelector(s);
+let provider = null, signer = null, me = null, chain = null;
+const store = { key: k => `xland.forge.${chain}.${me}.${k}`,
+  get(k){ try { return localStorage.getItem(this.key(k)); } catch(e){ return null; } },
+  set(k, v){ try { localStorage.setItem(this.key(k), v); } catch(e){} } };
+const card = s => $('#step-' + s);
+const say = (s, text, cls) => { const el = card(s).querySelector('.status'); el.textContent = text; el.className = 'status ' + (cls || ''); };
+const link = a => `<a href="${NETS[chain].scan}/address/${a}" target="_blank" rel="noopener">${a}</a>`;
+const out = (s, html) => { card(s).querySelector('[data-out]').innerHTML = html; };
+const done = s => { card(s).classList.add('done'); const b = card(s).querySelector('button'); if(b){ b.disabled = true; b.textContent = 'Done'; } refreshSummary(); };
+const read = (to, iface, fn, args) => provider.call({ to, data: iface.encodeFunctionData(fn, args) }).then(r => iface.decodeFunctionResult(fn, r)[0]);
+
+function aboutTexts(){ F.tokens(ethers.ZeroAddress, 0n).forEach(t => { card(t.key).querySelector('[data-about]').textContent = t.about; }); }
+aboutTexts();
+
+$('#net').addEventListener('change', () => { $('#mainnet-warning').classList.toggle('hidden', $('#net').value !== '8453'); if(me) connect(); });
+
+async function connect(){
+  if(!window.ethereum){ say('connect', 'No wallet found. Open this page in a browser with MetaMask installed.', 'bad'); return; }
+  const want = NETS[$('#net').value];
+  try {
+    await window.ethereum.request({ method:'eth_requestAccounts' });
+    try { await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: want.hex }] }); }
+    catch(e){ if(e && e.code === 4902) await window.ethereum.request({ method:'wallet_addEthereumChain', params:[{ chainId: want.hex, chainName: want.name, rpcUrls:[want.rpc], nativeCurrency:{ name:'Ether', symbol:'ETH', decimals:18 }, blockExplorerUrls:[want.scan] }] }); else throw e; }
+    provider = new ethers.BrowserProvider(window.ethereum); signer = await provider.getSigner(); me = await signer.getAddress();
+    chain = Number((await provider.getNetwork()).chainId);
+    if(chain !== Number($('#net').value)){ say('connect', 'The wallet is on another network. Switch it to ' + want.name + '.', 'bad'); return; }
+    const bal = await provider.getBalance(me);
+    $('#who').innerHTML = `Admin: ${link(me)}<br>${NETS[chain].name}, ${ethers.formatEther(bal).slice(0, 8)} ETH for gas`;
+    say('connect', bal === 0n ? 'This wallet has no ETH on ' + NETS[chain].name + ' to pay gas. Add a little first.' : 'Connected.', bal === 0n ? 'bad' : 'ok');
+    document.querySelectorAll('[data-step]').forEach(b => { b.disabled = false; b.textContent = b.dataset.label || b.textContent; card(b.dataset.step).classList.remove('done'); });
+    document.querySelectorAll('[data-out]').forEach(el => el.innerHTML = '');
+    await resume();
+  } catch(e){ say('connect', (e && (e.shortMessage || e.message)) || 'The wallet refused.', 'bad'); }
+}
+$('#connect').addEventListener('click', connect);
+document.querySelectorAll('[data-step]').forEach(b => { b.dataset.label = b.textContent; b.addEventListener('click', () => run(b.dataset.step, b)); });
+if(window.ethereum) window.ethereum.on && window.ethereum.on('accountsChanged', () => location.reload());
+
+/* What already exists for this wallet on this network (so nothing is ever created twice). */
+async function resume(){
+  const pid = store.get('policy');
+  if(pid && await read(F.ADDR.policy, F.iPolicy, 'policyExists', [BigInt(pid)]).catch(() => false)){ out('policy', 'List id ' + pid); done('policy'); }
+  for(const t of F.tokens(me, 0n)){
+    const at = await read(F.ADDR.factory, F.iFactory, 'getB20Address', [0, me, t.salt]).catch(() => null);
+    if(!at) continue;
+    out(t.key, 'Address ' + link(at));
+    if(await read(F.ADDR.factory, F.iFactory, 'isB20Initialized', [at]).catch(() => false)) done(t.key);
+  }
+  for(const k of ['deeds', 'passport']){ const a = store.get(k); if(a && (await provider.getCode(a)) !== '0x'){ out(k, 'Address ' + link(a)); done(k); } }
+  refreshSummary();
+}
+
+async function sendAndWait(step, tx){
+  say(step, 'Confirm in your wallet…');
+  const sent = await signer.sendTransaction(tx);
+  say(step, 'Sent. Waiting for Base… ' + sent.hash.slice(0, 12) + '…');
+  const rc = await sent.wait();
+  if(!rc || rc.status !== 1) throw new Error('The transaction failed on chain.');
+  return rc;
+}
+
+async function run(step, btn){
+  btn.disabled = true;
+  try {
+    if(step === 'check'){
+      const a = await read(F.ADDR.activation, F.iActivation, 'isActivated', [F.FEATURE.asset]);
+      const p = await read(F.ADDR.activation, F.iActivation, 'isActivated', [F.FEATURE.policy]);
+      if(!a || !p){ say('check', `B20 tokens: ${a ? 'active' : 'not active'}; policies: ${p ? 'active' : 'not active'}. Creating tokens would fail here.`, 'bad'); btn.disabled = false; return; }
+      say('check', 'B20 tokens and policies are active on ' + NETS[chain].name + '.', 'ok'); done('check'); return;
+    }
+    if(step === 'policy'){
+      const rc = await sendAndWait('policy', { to: F.ADDR.policy, data: F.createPolicyData(me) });
+      const log = rc.logs.map(l => { try { return F.iPolicy.parseLog(l); } catch(e){ return null; } }).find(x => x && x.name === 'PolicyCreated');
+      if(!log) throw new Error('No list id in the receipt.');
+      store.set('policy', log.args.policyId.toString()); out('policy', 'List id ' + log.args.policyId.toString());
+      say('policy', 'Citizens list created.', 'ok'); done('policy'); return;
+    }
+    if(['quarx', 'bux', 'lex'].includes(step)){
+      const pid = store.get('policy');
+      if(step === 'bux' && !pid){ say('bux', 'Create the citizens list first (step 3).', 'bad'); btn.disabled = false; return; }
+      const t = F.tokens(me, pid ? BigInt(pid) : null).find(x => x.key === step);
+      const at = await read(F.ADDR.factory, F.iFactory, 'getB20Address', [0, me, t.salt]);
+      if(await read(F.ADDR.factory, F.iFactory, 'isB20Initialized', [at])){ out(step, 'Address ' + link(at)); done(step); return; }
+      await sendAndWait(step, { to: F.ADDR.factory, data: t.createData });
+      store.set(step, at); out(step, 'Address ' + link(at)); say(step, t.name + ' created.', 'ok'); done(step); return;
+    }
+    if(step === 'deeds' || step === 'passport'){
+      const C = CONTRACTS[step];
+      const rc = await sendAndWait(step, { data: F.deployData(C.bytecode, me, F.URIS[step]) });
+      store.set(step, rc.contractAddress); out(step, 'Address ' + link(rc.contractAddress));
+      say(step, C.name + ' deployed.', 'ok'); done(step); return;
+    }
+  } catch(e){
+    say(step, (e && (e.shortMessage || e.info && e.info.error && e.info.error.message || e.message)) || 'Something went wrong.', 'bad');
+    btn.disabled = false;
+  }
+}
+
+function addresses(){
+  if(!me) return null;
+  const o = { network: NETS[chain].name, chainId: chain, admin: me, citizensList: store.get('policy') };
+  ['quarx', 'bux', 'lex', 'deeds', 'passport'].forEach(k => { o[k] = card(k).classList.contains('done') ? (store.get(k) || (card(k).querySelector('[data-out] a') || {}).textContent || null) : null; });
+  return o;
+}
+function refreshSummary(){
+  const o = addresses(); if(!o) return;
+  const any = ['quarx', 'bux', 'lex', 'deeds', 'passport'].some(k => o[k]);
+  $('#summary').innerHTML = any ? ['quarx', 'bux', 'lex', 'deeds', 'passport'].map(k => `${k}: ${o[k] ? link(o[k]) : '—'}`).join('<br>') + (o.citizensList ? `<br>citizens list id: ${o.citizensList}` : '') : 'Nothing created yet.';
+  $('#copy').disabled = !any;
+}
+$('#copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify(addresses(), null, 2)); say('summary', 'Copied.', 'ok'); }
+  catch(e){ say('summary', 'Copy failed. Select the addresses above and copy them by hand.', 'bad'); }
+});
+</script>
+</body>
+</html>

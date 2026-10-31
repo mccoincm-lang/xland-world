@@ -3,6 +3,7 @@
 // Bindings: D1 database as `DB` (xland-waitlist). Secret `ADMIN_KEY`: the founder key (dashboard, moderation, CSV export).
 // Tables are created automatically on first use; schema.sql holds the same statements.
 import HTML from "../dist/index.html";
+import FORGE from "../dist/forge.html";
 import WORLD from "./world.json";
 
 const SEC = {
@@ -1059,7 +1060,12 @@ export default {
 
     if (url.pathname === '/' || url.pathname === '/index.html')
       return new Response(HTML, {headers:{'content-type':'text/html; charset=utf-8', 'cache-control':'public, max-age=300', ...SEC}});
-    if (url.pathname === '/robots.txt') return new Response('User-agent: *\nAllow: /\n', {headers:{'content-type':'text/plain'}});
+    // The founder's Forge (r57): builds token-creation transactions for the visitor's own wallet to sign. It holds no
+    // keys and calls nothing on this server; a wallet extension is the only thing it talks to.
+    if (url.pathname === '/forge')
+      return new Response(FORGE, {headers:{'content-type':'text/html; charset=utf-8', 'cache-control':'no-store', 'x-robots-tag':'noindex, nofollow', ...SEC,
+        'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
+    if (url.pathname === '/robots.txt') return new Response('User-agent: *\nAllow: /\nDisallow: /forge\n', {headers:{'content-type':'text/plain'}});
     return Response.redirect(url.origin + '/', 302);
   },
   // Cron trigger (hourly, wrangler.toml): bring real weather into Xland

@@ -12,7 +12,7 @@ const port = Number(process.argv[2] || 8787);
 import { statSync } from "node:fs";
 let cached = null, cachedKey = "";
 function loadWorker() {
-  const key = ["dist/index.html", "src/worker.js", "src/world.json"].map((f) => statSync(root + f).mtimeMs).join("|");
+  const key = ["dist/index.html", "dist/forge.html", "src/worker.js", "src/world.json"].map((f) => statSync(root + f).mtimeMs).join("|");
   if (cached && key === cachedKey) return cached;
   cachedKey = key;
   return (cached = loadWorkerFresh());
@@ -22,6 +22,7 @@ function loadWorkerFresh() {
   const src = readFileSync(root + "src/worker.js", "utf8").replace(
     'import HTML from "../dist/index.html";',
     "const HTML = " + JSON.stringify(html) + ";",
+  ).replace('import FORGE from "../dist/forge.html";', "const FORGE = " + JSON.stringify(readFileSync(root + "dist/forge.html", "utf8")) + ";",
   ).replace('import WORLD from "./world.json";', "const WORLD = " + readFileSync(root + "src/world.json", "utf8") + ";");
   return import("data:text/javascript;base64," + Buffer.from(src).toString("base64") + "#" + Date.now());
 }
