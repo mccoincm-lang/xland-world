@@ -16,3 +16,7 @@ fallthrough = true
 binding = "DB"
 database_name = "xland-waitlist"
 database_id = "05d46b41-131e-4b2d-84c9-34951b813d56"
+
+# Hourly: read the real weather at each territory's twin on Earth and raise shared hazards (r55)
+[triggers]
+crons = ["7 * * * *"]

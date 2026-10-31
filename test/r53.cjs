@@ -15,7 +15,8 @@ const err = r => r.body.error || r.body.why || (r.body.dup ? "dup" : "ok");
   // --- Construction ---
   let r = await api(A, "POST", "/build/start?def=farmstead&parcel=FX-A-01&key=proj-FX-A-01-t1");
   check("Farmstead on a parcel the citizen does not hold is refused", r.status === 403, err(r));
-  r = await api(A, "PUT", "/doc?c=claims&id=FX-A-01", { data: { owner: uidA, at: Date.now() } }); check("Claim FX-A-01", r.status === 200, err(r));
+  await api(A, "POST", "/dev/credit?asset=bux&units=2500000&op=prod-dev-land" + Date.now().toString(36));
+  r = await api(A, "POST", "/land/buy?parcel=FX-A-01&handle=Ada"); check("Buy FX-A-01 (r55: land is paid on the server)", r.status === 200, err(r));
   r = await api(A, "POST", "/build/start?def=farmstead&parcel=FX-A-01&key=proj-FX-A-01-t1");
   check("Farmstead without QuarX is refused and nothing stays locked", r.status === 409 && (await wallet(A)).locked.bux === "0", err(r));
   await api(A, "POST", "/dev/credit?asset=quarx&units=50000&op=mine-dev-a1"); await api(A, "POST", "/dev/credit?asset=bux&units=2000000&op=prod-dev-a1");

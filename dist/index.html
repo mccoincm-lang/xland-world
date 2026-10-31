@@ -970,6 +970,37 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .wallet-status{display:flex;align-items:center;gap:.7rem;padding:.7rem 1rem;margin:0 0 1.2rem}
 .wallet-status svg{width:28px;height:28px;flex:none}
 
+/* ===== r55: the living map: building catalog, condition, twins on Earth, hazards ===== */
+.bcat{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.bcard{gap:.6rem}
+.bc-head{display:flex;align-items:center;gap:.7rem}
+.bc-head b{display:block;font-family:var(--font-display);font-size:1.2rem;font-weight:650}
+.bicon{width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:50%;color:#F7E6BF;background:radial-gradient(circle at 34% 28%,hsl(var(--h,30) 45% 34%),hsl(var(--h,30) 50% 14%));box-shadow:inset 0 0 0 1.2px var(--gold)}
+.bicon svg{width:22px;height:22px}
+.bicon.sm{width:26px;height:26px;display:inline-grid;vertical-align:middle;margin-right:.1rem}
+.bicon.sm svg{width:15px;height:15px}
+:root[data-theme="light"] .bicon{border-radius:12px;background:hsl(var(--h,30) 92% 93%);color:hsl(var(--h,30) 70% 36%);box-shadow:none}
+:root[data-theme="light"] .bicon.sm{border-radius:8px}
+.dep-list li:has(.bicon){grid-template-columns:30px 1fr;align-items:center}
+.bc-cost{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem;font-size:.92rem;font-weight:600;font-variant-numeric:tabular-nums}
+.bc-cost li{display:flex;align-items:center;gap:.3rem}
+.bc-cost .res-ic{width:18px;height:18px}
+.bc-cost li.no{color:var(--warn)}
+.cond{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.8rem;margin:1rem 0 .4rem;max-width:460px;font-size:.95rem}
+.cond i{height:10px;border-radius:5px;background:color-mix(in srgb,var(--text) 12%,transparent);overflow:hidden}
+.cond i b{display:block;height:100%;border-radius:5px}
+.cond em{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+.twin{display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem}
+.twin svg{width:16px;height:16px;flex:none;margin-top:.2rem;color:var(--gold)}
+:root[data-theme="light"] .twin svg{color:var(--gold)}
+.land-sum p{font-size:.95rem;line-height:1.5}
+.land-sum b{color:var(--gold)}
+:root[data-theme="light"] .land-sum b{color:var(--gold)}
+.hz-lab{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+.hz-lab .input{max-width:340px}
+.ev-banner .hz{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.world-events .ev-banner .hz{background:rgba(40,16,10,.86)}
+
 </style>
 </head>
 <body>
@@ -1349,7 +1380,8 @@ function territoryHealth(id){ const day=Date.now()-86400000, L=state.ledger.filt
     ['Civic', id==='xetropolitan'?`${state.proposals.length} motions`:id==='ixeland'?(state.attended.includes('ixeland')?'Assembly attended':'Quiet'):'Quiet'],
     ['Access', TERR[id].access+(ev.length?` · ${ev.map(e=>WEVENTS[e.id].name).join(', ')}`:'')]
   ]; }
-function eventBanner(territory){ const ev=activeEvents().concat(announcedEvents()).filter(e=>!territory||WEVENTS[e.id].territory===territory||(WEVENTS[e.id].route||'').includes(territory)); if(!ev.length) return '';
+function eventBanner(territory){ return classicEventBanner(territory)+hazardBanner(territory); }
+function classicEventBanner(territory){ const ev=activeEvents().concat(announcedEvents()).filter(e=>!territory||WEVENTS[e.id].territory===territory||(WEVENTS[e.id].route||'').includes(territory)); if(!ev.length) return '';
   return `<div class="ev-banner">${ev.map(e=>`<div><b>${esc(WEVENTS[e.id].name)} <span class="mstate ${eventPhase(e)==='ANNOUNCED'?'':'voting'}">${eventPhase(e)}</span></b><span>${esc(WEVENTS[e.id].effect)} ${eventPhase(e)==='ANNOUNCED'?'Begins '+new Date(e.start).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'Until '+new Date(e.end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}. Objective: ${esc(WEVENTS[e.id].objective)} (${eventProgress(e)} of ${WEVENTS[e.id].target})</span></div>`).join('')}</div>`; }
 /* Canonical territory registry: one source of truth for access, tax, markets, property rules and world state.
    Values the canon leaves open are null and shown as TBD. */
@@ -1548,7 +1580,7 @@ function applyIdleFees(st){ st=st||state; if(!st.passport) return false; const t
   }); return ch; }
 function resaleSplit(asset, amt){ const held=BigInt(state.bal[asset]||'0'), resale=BigInt((state.resale||{})[asset]||'0'), firstHand=held-(resale<held?resale:held); const second=amt>firstHand?amt-firstHand:0n; return {firstHand: amt-second, second}; }
 function applySpoilage(st){ st=st||state; if(!st.passport) return false; const today=Math.floor(Date.now()/86400000); if(st.spoilDay===undefined||st.spoilDay===null){ st.spoilDay=today; return true; }
-  let ch=false; for(let d=Math.max(st.spoilDay+1,today-6); d<=today; d++){ Object.entries(SIM.spoil).forEach(([a,c])=>{ const bal=BigInt(st.bal[a]||'0'), free=BigInt(c.freeUnits)*UNIT; if(bal<=free) return;
+  let ch=false; for(let d=Math.max(st.spoilDay+1,today-6); d<=today; d++){ Object.entries(SIM.spoil).forEach(([a,c])=>{ const extra=(st.buildings||[]).filter(b=>b.def==='granary').reduce((n,b)=>n+Math.round((a==='vegiex'?100:40)*condFactor(b)),0), bal=BigInt(st.bal[a]||'0'), free=BigInt(c.freeUnits+extra)*UNIT; if(bal<=free) return;
       const loss=(bal-free)*BigInt(c.pctPerDay)/100n; if(loss>0n && postLedger(st,`decay-${a}-${d}`,[[a,-loss,'spoilage']],`Spoilage: ${fmtAmt(loss)} ${AS[a].sym} above the storage limit`,null)) ch=true; }); }
   st.spoilDay=today; return true; }
 /* Land and built world (Property System v1.0). Parcels are data; geometry is a point reference until topology is final.
@@ -1570,6 +1602,21 @@ const PARCELS = [
   {id:'XTL-01', t:'xetland', d:null, at:[470,612], zoning:['TBD'], rights:[], excluded:[], note:'Locked for the first ten years.'},
   {id:'XST-01', t:'xasteland', d:null, at:[845,365], zoning:['TBD'], rights:[], excluded:[], note:'Sealed until the population threshold.'}
 ];
+/* ---- The living map (r55): land placed on the terrain, buildings on it, weather from Earth ----
+   src/world.json is the single source for the land registry, each territory's twin on Earth and the hazards. The build
+   inlines it here and the Worker imports the same file, so prices, lots and rules cannot drift apart. */
+const WORLD = {"twins":{"xetropolitan":{"name":"Dubai","lat":25.2,"lon":55.27},"farmx":{"name":"Central Valley, California","lat":36.74,"lon":-119.79},"xalp":{"name":"Zermatt","lat":46.02,"lon":7.75},"ximberland":{"name":"Hyrcanian forest, Ramsar","lat":36.9,"lon":50.66},"aquax":{"name":"Manaus on the Amazon","lat":-3.12,"lon":-60.02},"xetland":{"name":"Okavango Delta","lat":-19.3,"lon":22.9},"xasteland":{"name":"Death Valley","lat":36.46,"lon":-116.87},"tundrax":{"name":"Tromsø","lat":69.65,"lon":18.96},"ixeland":{"name":"Reykjavík","lat":64.15,"lon":-21.94},"xahara":{"name":"Merzouga, Sahara","lat":31.1,"lon":-4.01}},"hazards":{"storm":{"name":"Storm","dmg":20,"verb":"battered","effect":"Buildings here take storm damage."},"flood":{"name":"Flood","dmg":15,"verb":"flooded","effect":"Heavy rain floods low ground; buildings take damage."},"snow":{"name":"Heavy snow","dmg":12,"verb":"buried in snow","effect":"Snow loads roofs; buildings take damage."},"heat":{"name":"Heatwave","dmg":0,"verb":"scorched","effect":"Harvests started here yield 30% less while it lasts.","yieldMult":0.7}},"wearPerDay":0.4,"land":[{"id":"FX-L-001","t":"farmx","at":[300,508],"price":280,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-002","t":"farmx","at":[313,521],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-003","t":"farmx","at":[313,508],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-004","t":"farmx","at":[300,495],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-005","t":"farmx","at":[274,521],"price":265,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-006","t":"farmx","at":[326,521],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-007","t":"farmx","at":[287,495],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-008","t":"farmx","at":[313,495],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-009","t":"farmx","at":[326,508],"price":295,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-010","t":"farmx","at":[274,534],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-011","t":"farmx","at":[326,534],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-012","t":"farmx","at":[274,495],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-013","t":"farmx","at":[326,495],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-014","t":"farmx","at":[274,547],"price":255,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-015","t":"farmx","at":[326,547],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-016","t":"farmx","at":[300,482],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-017","t":"farmx","at":[339,521],"price":295,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-018","t":"farmx","at":[287,482],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-019","t":"farmx","at":[313,482],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-020","t":"farmx","at":[339,508],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-021","t":"farmx","at":[339,534],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-022","t":"farmx","at":[287,560],"price":255,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-023","t":"farmx","at":[274,482],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-024","t":"farmx","at":[261,495],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-025","t":"farmx","at":[339,495],"price":310,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-026","t":"farmx","at":[261,547],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-027","t":"farmx","at":[339,547],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-028","t":"farmx","at":[274,560],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-029","t":"farmx","at":[300,469],"price":280,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-030","t":"farmx","at":[248,521],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-031","t":"farmx","at":[352,521],"price":295,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-032","t":"farmx","at":[287,469],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-033","t":"farmx","at":[313,469],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-034","t":"farmx","at":[300,573],"price":255,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-035","t":"farmx","at":[248,508],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-036","t":"farmx","at":[352,508],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-037","t":"farmx","at":[248,534],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-038","t":"farmx","at":[352,534],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-039","t":"farmx","at":[261,482],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-040","t":"farmx","at":[287,573],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-041","t":"farmx","at":[313,573],"price":255,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-042","t":"farmx","at":[261,560],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-043","t":"farmx","at":[339,560],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-044","t":"farmx","at":[274,469],"price":265,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-045","t":"farmx","at":[248,495],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-046","t":"farmx","at":[352,495],"price":305,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-047","t":"farmx","at":[248,547],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-048","t":"farmx","at":[352,547],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-049","t":"farmx","at":[274,573],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-050","t":"farmx","at":[326,573],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-051","t":"farmx","at":[300,456],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-052","t":"farmx","at":[261,469],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-053","t":"farmx","at":[248,482],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-054","t":"farmx","at":[352,482],"price":305,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-055","t":"farmx","at":[235,521],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-056","t":"farmx","at":[365,521],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-057","t":"farmx","at":[287,456],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-058","t":"farmx","at":[313,456],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-059","t":"farmx","at":[248,560],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-060","t":"farmx","at":[352,560],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-061","t":"farmx","at":[261,573],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-062","t":"farmx","at":[339,573],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-063","t":"farmx","at":[300,586],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-064","t":"farmx","at":[235,508],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-065","t":"farmx","at":[365,508],"price":295,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-066","t":"farmx","at":[235,534],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-067","t":"farmx","at":[365,534],"price":280,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-068","t":"farmx","at":[287,586],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-069","t":"farmx","at":[313,586],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-070","t":"farmx","at":[274,456],"price":265,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-071","t":"farmx","at":[235,495],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-072","t":"farmx","at":[365,495],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-073","t":"farmx","at":[235,547],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-074","t":"farmx","at":[365,547],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-075","t":"farmx","at":[274,586],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-076","t":"farmx","at":[326,586],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-077","t":"farmx","at":[248,469],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-078","t":"farmx","at":[352,469],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-079","t":"farmx","at":[248,573],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-080","t":"farmx","at":[261,456],"price":255,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-081","t":"farmx","at":[235,482],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-082","t":"farmx","at":[365,482],"price":300,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-083","t":"farmx","at":[235,560],"price":230,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-084","t":"farmx","at":[261,586],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-085","t":"farmx","at":[300,443],"price":270,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-086","t":"farmx","at":[222,521],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-087","t":"farmx","at":[378,521],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-088","t":"farmx","at":[287,443],"price":265,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-089","t":"farmx","at":[313,443],"price":275,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-090","t":"farmx","at":[222,508],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-091","t":"farmx","at":[378,508],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-092","t":"farmx","at":[300,599],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-093","t":"farmx","at":[222,534],"price":230,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-094","t":"farmx","at":[378,534],"price":280,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-095","t":"farmx","at":[287,599],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-096","t":"farmx","at":[313,599],"price":240,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-097","t":"farmx","at":[274,443],"price":260,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-098","t":"farmx","at":[326,443],"price":280,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-099","t":"farmx","at":[222,495],"price":235,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-100","t":"farmx","at":[378,495],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-101","t":"farmx","at":[248,456],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-102","t":"farmx","at":[352,456],"price":290,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-103","t":"farmx","at":[222,547],"price":230,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-104","t":"farmx","at":[235,469],"price":245,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-105","t":"farmx","at":[365,469],"price":295,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-106","t":"farmx","at":[274,599],"price":230,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-107","t":"farmx","at":[235,573],"price":225,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-108","t":"farmx","at":[248,586],"price":225,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-109","t":"farmx","at":[261,443],"price":250,"builds":["farmstead","granary"],"lot":true},{"id":"FX-L-110","t":"farmx","at":[339,443],"price":285,"builds":["farmstead","granary"],"lot":true},{"id":"XIM-L-001","t":"ximberland","at":[280,316],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-002","t":"ximberland","at":[268,304],"price":335,"builds":["homax"],"lot":true},{"id":"XIM-L-003","t":"ximberland","at":[280,352],"price":320,"builds":["homax"],"lot":true},{"id":"XIM-L-004","t":"ximberland","at":[280,304],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-005","t":"ximberland","at":[292,316],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-006","t":"ximberland","at":[244,292],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-007","t":"ximberland","at":[268,292],"price":330,"builds":["homax"],"lot":true},{"id":"XIM-L-008","t":"ximberland","at":[232,364],"price":335,"builds":["homax"],"lot":true},{"id":"XIM-L-009","t":"ximberland","at":[220,352],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-010","t":"ximberland","at":[280,364],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-011","t":"ximberland","at":[292,352],"price":310,"builds":["homax"],"lot":true},{"id":"XIM-L-012","t":"ximberland","at":[220,304],"price":365,"builds":["homax"],"lot":true},{"id":"XIM-L-013","t":"ximberland","at":[232,292],"price":355,"builds":["homax"],"lot":true},{"id":"XIM-L-014","t":"ximberland","at":[292,304],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-015","t":"ximberland","at":[280,292],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-016","t":"ximberland","at":[208,328],"price":365,"builds":["homax"],"lot":true},{"id":"XIM-L-017","t":"ximberland","at":[208,340],"price":355,"builds":["homax"],"lot":true},{"id":"XIM-L-018","t":"ximberland","at":[220,364],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-019","t":"ximberland","at":[208,316],"price":370,"builds":["homax"],"lot":true},{"id":"XIM-L-020","t":"ximberland","at":[304,328],"price":310,"builds":["homax"],"lot":true},{"id":"XIM-L-021","t":"ximberland","at":[256,280],"price":335,"builds":["homax"],"lot":true},{"id":"XIM-L-022","t":"ximberland","at":[304,340],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-023","t":"ximberland","at":[292,364],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-024","t":"ximberland","at":[304,316],"price":310,"builds":["homax"],"lot":true},{"id":"XIM-L-025","t":"ximberland","at":[244,280],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-026","t":"ximberland","at":[268,280],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-027","t":"ximberland","at":[220,292],"price":355,"builds":["homax"],"lot":true},{"id":"XIM-L-028","t":"ximberland","at":[208,352],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-029","t":"ximberland","at":[292,292],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-030","t":"ximberland","at":[208,304],"price":365,"builds":["homax"],"lot":true},{"id":"XIM-L-031","t":"ximberland","at":[304,352],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-032","t":"ximberland","at":[232,280],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-033","t":"ximberland","at":[304,304],"price":310,"builds":["homax"],"lot":true},{"id":"XIM-L-034","t":"ximberland","at":[280,280],"price":320,"builds":["homax"],"lot":true},{"id":"XIM-L-035","t":"ximberland","at":[208,364],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-036","t":"ximberland","at":[244,388],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-037","t":"ximberland","at":[196,328],"price":360,"builds":["homax"],"lot":true},{"id":"XIM-L-038","t":"ximberland","at":[196,340],"price":350,"builds":["homax"],"lot":true},{"id":"XIM-L-039","t":"ximberland","at":[208,292],"price":355,"builds":["homax"],"lot":true},{"id":"XIM-L-040","t":"ximberland","at":[196,316],"price":360,"builds":["homax"],"lot":true},{"id":"XIM-L-041","t":"ximberland","at":[220,280],"price":350,"builds":["homax"],"lot":true},{"id":"XIM-L-042","t":"ximberland","at":[316,328],"price":300,"builds":["homax"],"lot":true},{"id":"XIM-L-043","t":"ximberland","at":[316,340],"price":295,"builds":["homax"],"lot":true},{"id":"XIM-L-044","t":"ximberland","at":[256,268],"price":330,"builds":["homax"],"lot":true},{"id":"XIM-L-045","t":"ximberland","at":[304,292],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-046","t":"ximberland","at":[292,280],"price":310,"builds":["homax"],"lot":true},{"id":"XIM-L-047","t":"ximberland","at":[316,316],"price":300,"builds":["homax"],"lot":true},{"id":"XIM-L-048","t":"ximberland","at":[244,268],"price":335,"builds":["homax"],"lot":true},{"id":"XIM-L-049","t":"ximberland","at":[196,352],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-050","t":"ximberland","at":[268,268],"price":320,"builds":["homax"],"lot":true},{"id":"XIM-L-051","t":"ximberland","at":[196,304],"price":360,"builds":["homax"],"lot":true},{"id":"XIM-L-052","t":"ximberland","at":[232,268],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-053","t":"ximberland","at":[316,304],"price":300,"builds":["homax"],"lot":true},{"id":"XIM-L-054","t":"ximberland","at":[280,268],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-055","t":"ximberland","at":[196,364],"price":335,"builds":["homax"],"lot":true},{"id":"XIM-L-056","t":"ximberland","at":[304,280],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-057","t":"ximberland","at":[196,292],"price":355,"builds":["homax"],"lot":true},{"id":"XIM-L-058","t":"ximberland","at":[184,328],"price":350,"builds":["homax"],"lot":true},{"id":"XIM-L-059","t":"ximberland","at":[220,268],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-060","t":"ximberland","at":[184,340],"price":345,"builds":["homax"],"lot":true},{"id":"XIM-L-061","t":"ximberland","at":[316,292],"price":295,"builds":["homax"],"lot":true},{"id":"XIM-L-062","t":"ximberland","at":[292,268],"price":305,"builds":["homax"],"lot":true},{"id":"XIM-L-063","t":"ximberland","at":[184,316],"price":350,"builds":["homax"],"lot":true},{"id":"XIM-L-064","t":"ximberland","at":[256,256],"price":320,"builds":["homax"],"lot":true},{"id":"XIM-L-065","t":"ximberland","at":[184,352],"price":340,"builds":["homax"],"lot":true},{"id":"XIM-L-066","t":"ximberland","at":[244,256],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-067","t":"ximberland","at":[196,376],"price":325,"builds":["homax"],"lot":true},{"id":"XIM-L-068","t":"ximberland","at":[268,256],"price":315,"builds":["homax"],"lot":true},{"id":"XIM-L-069","t":"ximberland","at":[184,304],"price":350,"builds":["homax"],"lot":true},{"id":"XIM-L-070","t":"ximberland","at":[232,256],"price":330,"builds":["homax"],"lot":true},{"id":"XET-L-001","t":"xetropolitan","at":[418.7,426.7],"price":645,"builds":["homax","granary"],"lot":true},{"id":"XET-L-002","t":"xetropolitan","at":[396.1,408.7],"price":640,"builds":["homax","granary"],"lot":true},{"id":"XET-L-003","t":"xetropolitan","at":[381.5,352.7],"price":640,"builds":["homax","granary"],"lot":true},{"id":"XET-L-004","t":"xetropolitan","at":[384.2,340],"price":635,"builds":["homax","granary"],"lot":true},{"id":"XET-L-005","t":"xetropolitan","at":[406,424],"price":635,"builds":["homax","granary"],"lot":true},{"id":"XET-L-006","t":"xetropolitan","at":[448.4,287.5],"price":635,"builds":["homax","granary"],"lot":true},{"id":"XET-L-007","t":"xetropolitan","at":[497.3,430.3],"price":635,"builds":["homax","granary"],"lot":true},{"id":"XET-L-008","t":"xetropolitan","at":[499,298.3],"price":630,"builds":["homax","granary"],"lot":true},{"id":"XET-L-009","t":"xetropolitan","at":[435.7,284.8],"price":625,"builds":["homax","granary"],"lot":true},{"id":"XET-L-010","t":"xetropolitan","at":[373.5,390.6],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-011","t":"xetropolitan","at":[511.6,301],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-012","t":"xetropolitan","at":[466.6,450.2],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-013","t":"xetropolitan","at":[368.9,350],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-014","t":"xetropolitan","at":[476.4,280.2],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-015","t":"xetropolitan","at":[510,433],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-016","t":"xetropolitan","at":[371.6,337.3],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-017","t":"xetropolitan","at":[463.7,277.5],"price":620,"builds":["homax","granary"],"lot":true},{"id":"XET-L-018","t":"xetropolitan","at":[423,282.1],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-019","t":"xetropolitan","at":[366.2,362.6],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-020","t":"xetropolitan","at":[489,282.9],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-021","t":"xetropolitan","at":[374.3,324.6],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-022","t":"xetropolitan","at":[451.1,274.8],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-023","t":"xetropolitan","at":[525.3,423],"price":615,"builds":["homax","granary"],"lot":true},{"id":"XET-L-024","t":"xetropolitan","at":[363.5,375.3],"price":610,"builds":["homax","granary"],"lot":true},{"id":"XET-L-025","t":"xetropolitan","at":[438.4,272.1],"price":610,"builds":["homax","granary"],"lot":true},{"id":"XET-L-026","t":"xetropolitan","at":[491.9,455.6],"price":605,"builds":["homax","granary"],"lot":true},{"id":"XET-L-027","t":"xetropolitan","at":[522.6,435.7],"price":605,"builds":["homax","granary"],"lot":true},{"id":"XET-L-028","t":"xetropolitan","at":[463.9,462.8],"price":605,"builds":["homax","granary"],"lot":true},{"id":"XET-L-029","t":"xetropolitan","at":[425.7,269.4],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-030","t":"xetropolitan","at":[356.2,347.3],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-031","t":"xetropolitan","at":[479.1,267.6],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-032","t":"xetropolitan","at":[358.9,334.6],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-033","t":"xetropolitan","at":[466.4,264.9],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-034","t":"xetropolitan","at":[353.5,359.9],"price":600,"builds":["homax","granary"],"lot":true},{"id":"XET-L-035","t":"xetropolitan","at":[361.6,321.9],"price":595,"builds":["homax","granary"],"lot":true},{"id":"XET-L-036","t":"xetropolitan","at":[453.8,262.2],"price":595,"builds":["homax","granary"],"lot":true},{"id":"XET-L-037","t":"xetropolitan","at":[350.8,372.6],"price":595,"builds":["homax","granary"],"lot":true},{"id":"XET-L-038","t":"xetropolitan","at":[397.7,276.7],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-039","t":"xetropolitan","at":[504.6,458.3],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-040","t":"xetropolitan","at":[519.9,448.3],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-041","t":"xetropolitan","at":[364.3,309.3],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-042","t":"xetropolitan","at":[441.1,259.5],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-043","t":"xetropolitan","at":[382.4,286.7],"price":590,"builds":["homax","granary"],"lot":true},{"id":"XET-L-044","t":"xetropolitan","at":[489.2,468.2],"price":585,"builds":["homax","granary"],"lot":true},{"id":"XET-L-045","t":"xetropolitan","at":[367,296.6],"price":585,"builds":["homax","granary"],"lot":true},{"id":"XET-L-046","t":"xetropolitan","at":[343.6,344.6],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-047","t":"xetropolitan","at":[481.8,254.9],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-048","t":"xetropolitan","at":[346.3,331.9],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-049","t":"xetropolitan","at":[469.1,252.2],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-050","t":"xetropolitan","at":[340.9,357.2],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-051","t":"xetropolitan","at":[517.2,461],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-052","t":"xetropolitan","at":[385.1,274],"price":580,"builds":["homax","granary"],"lot":true},{"id":"XET-L-053","t":"xetropolitan","at":[349,319.2],"price":575,"builds":["homax","granary"],"lot":true},{"id":"XET-L-054","t":"xetropolitan","at":[501.9,470.9],"price":575,"builds":["homax","granary"],"lot":true},{"id":"XET-L-055","t":"xetropolitan","at":[369.7,284],"price":575,"builds":["homax","granary"],"lot":true},{"id":"XET-L-056","t":"xetropolitan","at":[351.7,306.6],"price":570,"builds":["homax","granary"],"lot":true},{"id":"XET-L-057","t":"xetropolitan","at":[519.7,263],"price":570,"builds":["homax","granary"],"lot":true},{"id":"XET-L-058","t":"xetropolitan","at":[354.4,293.9],"price":565,"builds":["homax","granary"],"lot":true},{"id":"XET-L-059","t":"xetropolitan","at":[514.5,473.6],"price":565,"builds":["homax","granary"],"lot":true},{"id":"XET-L-060","t":"xetropolitan","at":[499.2,483.6],"price":560,"builds":["homax","granary"],"lot":true},{"id":"XAH-L-001","t":"xahara","at":[760,550],"price":205,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-002","t":"xahara","at":[745,565],"price":205,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-003","t":"xahara","at":[685,490],"price":205,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-004","t":"xahara","at":[715,475],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-005","t":"xahara","at":[670,520],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-006","t":"xahara","at":[730,475],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-007","t":"xahara","at":[670,535],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-008","t":"xahara","at":[760,490],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-009","t":"xahara","at":[685,565],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-010","t":"xahara","at":[700,475],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-011","t":"xahara","at":[670,505],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-012","t":"xahara","at":[775,520],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-013","t":"xahara","at":[715,580],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-014","t":"xahara","at":[775,535],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-015","t":"xahara","at":[730,580],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-016","t":"xahara","at":[745,475],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-017","t":"xahara","at":[670,550],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-018","t":"xahara","at":[760,565],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-019","t":"xahara","at":[775,505],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-020","t":"xahara","at":[700,580],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-021","t":"xahara","at":[775,550],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-022","t":"xahara","at":[745,580],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-023","t":"xahara","at":[685,475],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-024","t":"xahara","at":[670,490],"price":200,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-025","t":"xahara","at":[670,565],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-026","t":"xahara","at":[715,460],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-027","t":"xahara","at":[775,490],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-028","t":"xahara","at":[655,520],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-029","t":"xahara","at":[685,580],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-030","t":"xahara","at":[730,460],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-031","t":"xahara","at":[655,535],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-032","t":"xahara","at":[775,565],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-033","t":"xahara","at":[760,580],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-034","t":"xahara","at":[700,460],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-035","t":"xahara","at":[655,505],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XAH-L-036","t":"xahara","at":[745,460],"price":195,"builds":["caravanserai"],"lot":true},{"id":"XIM-R-01","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-02","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-03","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-04","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-05","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-06","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-07","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-08","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-09","t":"ximberland","price":400,"builds":[]},{"id":"XIM-R-10","t":"ximberland","price":400,"builds":[]},{"id":"FX-A-01","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-02","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-03","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-04","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-05","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-06","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-07","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"FX-A-08","t":"farmx","price":250,"builds":["farmstead","granary"]},{"id":"XET-U-01","t":"xetropolitan","price":600,"builds":["homax","granary"]},{"id":"XET-U-02","t":"xetropolitan","price":600,"builds":["homax","granary"]},{"id":"XET-U-03","t":"xetropolitan","price":600,"builds":["homax","granary"]},{"id":"XET-U-04","t":"xetropolitan","price":600,"builds":["homax","granary"]},{"id":"XET-U-05","t":"xetropolitan","price":600,"builds":["homax","granary"]},{"id":"XET-U-06","t":"xetropolitan","price":600,"builds":["homax","granary"]}]} || {land:[], twins:{}, hazards:{}, wearPerDay:.4};
+const HAZARDS = WORLD.hazards, TWINS = WORLD.twins;
+SIM.lotCapPerTerritory = 3;   // also LOT_CAP in worker.js
+const LOT_KIND = {
+  farmx:{d:'fields', zoning:['Agricultural'], use:'agriculture', excluded:['Residence','Non-agricultural construction'], note:'Productive farmland. A Farmstead opens your own plot; a Granary keeps more of the harvest.'},
+  ximberland:{d:'homes', zoning:['Residential'], use:'residence', excluded:['Commercial construction'], note:'A clearing in the forest. Build a Homax to live here.'},
+  xetropolitan:{d:'market', zoning:['Urban'], use:'urban', excluded:[], note:'A vacant city lot. Residents pay urban tax; the rate is TBD.'},
+  xahara:{d:'bazaar', zoning:['Trade'], use:'trade', excluded:['Residence'], note:'A trading post on the dunes. Raise a caravanserai for the caravans.'}
+};
+WORLD.land.forEach(l=>{ const ex=PARCELS.find(p=>p.id===l.id);
+  if(ex){ ex.price=l.price; if(l.builds.length) ex.builds=l.builds; return; }
+  const K=LOT_KIND[l.t]; PARCELS.push({id:l.id, t:l.t, d:K.d, at:l.at, zoning:K.zoning, price:l.price, lot:true, builds:l.builds, rights:[], excluded:K.excluded, note:K.note, use:K.use}); });
 const PBY = Object.fromEntries(PARCELS.map(p=>[p.id,p]));
 const BUILDING_DEFS = {
   farmstead:{name:'Farmstead', version:1, class:'Agricultural / Productive', territories:['farmx'], zoning:'Agricultural', recipe:{quarx:1, bux:50}, approval:'None', secs:60, commitPct:.25, phases:['Foundation','Structure','Complete'], operation:'Opens your own production plot at the FarmX fields.', upgrades:[['Granary (Storex)','Preview: recipe TBD']], status:'SIMULATION recipe'},
@@ -1577,6 +1624,66 @@ const BUILDING_DEFS = {
   xky:{name:'Xky', version:1, class:'Landmark / Mega-project', territories:['xetropolitan'], zoning:'Commercial', recipe:{quarx:null}, approval:'TBD', phases:['TBD'], operation:'Mixed-use towers', upgrades:[], status:'Area 21,000 m² CANON; QuarX TBD; feature-flagged'}
 };
 function rightFor(st, pid){ return (st.rights||[]).find(r=>r.parcel===pid && r.status==='active'); }
+/* ---- Buildings anyone can raise on land they hold (r55). Recipes, times and the land each may stand on are server rules
+   (BUILDS in worker.js); QuarX is priced in seam rewards (quarxCostU), so it halves with each halving. ---- */
+Object.assign(BUILDING_DEFS.farmstead, {short:'Your own production plot at the fields', hue:88});
+Object.assign(BUILDING_DEFS, {
+  homax:{name:'Homax', version:1, class:'Residential', territories:['ximberland','xetropolitan'], zoning:'Residential', recipe:{quarx:2, bux:120}, approval:'None', secs:120, commitPct:.25, phases:['Foundation','Structure','Complete'], operation:'A home on your land. You can establish residence in it, which opens the vote at CompleX.', short:'A home: residence and the vote', upgrades:[], status:'SIMULATION recipe', hue:30},
+  granary:{name:'Granary', alias:'Storex', version:1, class:'Storage', territories:['farmx','xetropolitan'], zoning:'Agricultural or urban', recipe:{quarx:2, bux:80}, approval:'None', secs:90, commitPct:.25, phases:['Foundation','Structure','Complete'], operation:'Keeps 100 more VegieX and 40 more LivestoX before spoilage starts.', short:'Bigger harvest store, less spoilage', upgrades:[], status:'SIMULATION recipe', hue:42},
+  caravanserai:{name:'Caravanserai', version:1, class:'Trade post', territories:['xahara'], zoning:'Trade', recipe:{quarx:2, bux:100}, approval:'None', secs:90, commitPct:.25, phases:['Foundation','Structure','Complete'], operation:'A resting place for caravans on the dunes. One more dune search each day.', short:'One more dune search a day', upgrades:[], status:'SIMULATION recipe', hue:38}
+});
+const CIVIL_KINDS = ['homax','farmstead','granary','caravanserai'];
+PARCELS.filter(p=>(p.builds||[]).length).forEach(p=>{ const K=LOT_KIND[p.t]||{}, names=p.builds.map(k=>BUILDING_DEFS[k].name);
+  p.rights=['Ownership',`Use: ${K.use||'as zoned'}`,'Construct: '+(names.length>1?names.slice(0,-1).join(', ')+' or '+names[names.length-1]:names[0]),'Transfer'+(TERR[p.t].resaleFloor?' under the resale floor':'')];
+  if(p.builds.includes('homax')) p.excluded=p.excluded.filter(x=>!/^Residence|^Construct/.test(x)); else p.excluded=p.excluded.filter(x=>!/^Construct/.test(x)); });
+const lotsIn = t => PARCELS.filter(pp=>pp.t===t && (pp.builds||[]).length);
+const landWord = pp => pp.lot?'Lot':'Parcel';
+function lotState(pp){ if(rightFor(state,pp.id)) return 'mine'; const cl=social.claims[pp.id]; if(cl&&cl.owner&&cl.owner!==social.me) return 'held'; return parcelAvail(pp)==='AVAILABLE'?'free':'closed'; }
+function othersOn(pid){ for(const c of social.citizens){ if(c.id===social.me) continue; const st=(c.structures||[]).find(x=>x&&x.parcel===pid&&x.kind!=='parcel'); if(st) return st; } return null; }
+function buildingOn(pid){ return (state.buildings||[]).find(b=>b.parcel===pid); }
+function heldLotsIn(st, t){ return (st.rights||[]).filter(r=>r.status==='active'&&r.territory===t&&PBY[r.parcel]&&PBY[r.parcel].lot).length; }
+/* Condition is computed the way the server computes it (buildCond in worker.js): 100, less slow wear since it was finished
+   or last repaired, less the damage of every hazard in its territory that began since then. On xland.world the server's
+   figure (synced from /api/builds) wins. */
+function allHazards(st){ st=st||state; return ((serverMode&&world&&world.living&&world.living.hazards)||[]).concat(serverMode?[]:(st.hazards||[])); }
+function liveHazards(st){ const n=Date.now(); return allHazards(st).filter(h=>HAZARDS[h.type]&&h.start<=n&&h.end>n); }
+function hazardMod(t, key, def){ let v=def; liveHazards().filter(h=>h.territory===t).forEach(h=>{ const m=HAZARDS[h.type][key]; if(m!==undefined) v*=m; }); return v; }
+function condInfo(b, st){ if(!b) return {cond:100, hits:[]}; if(b.srv) return {cond:b.srv.cond, hits:b.srv.hits||[]};
+  const base=Math.max(b.at||0, b.repairedAt||0), t=(PBY[b.parcel]||{}).t, n=Date.now();
+  const hits=allHazards(st).filter(h=>h.territory===t && h.start>=base && h.start<=n && HAZARDS[h.type] && HAZARDS[h.type].dmg);
+  return {cond:Math.max(0, Math.round((100-(n-base)/86400000*WORLD.wearPerDay-hits.reduce((a,h)=>a+HAZARDS[h.type].dmg,0))*10)/10), hits}; }
+const condOf = (b, st) => condInfo(b, st).cond;
+const condFactor = b => { const c=condOf(b); return c>=60?1:c>=30?.6:.3; };
+function repairCost(b){ if(b.srv && b.srv.repair) return {bux:BigInt(b.srv.repair.bux), quarx:BigInt(b.srv.repair.quarx)};
+  const D=BUILDING_DEFS[b.def], c=condOf(b), missing=Math.max(0,100-c); if(missing<.5) return {bux:0n, quarx:0n};
+  return {bux:BigInt(Math.max(1,Math.ceil(missing/100*(D.recipe.bux+(D.recipe.quarx||0)*SIM.rates.quarx)*.6)))*UNIT, quarx:c<40?quarxCostU(1):0n}; }
+/* A hazard that damaged one of your buildings is told once: in the chronicle and in a toast. */
+function damageNotices(){ if(!state.passport) return false; let ch=false; state.hzSeen=state.hzSeen||[];
+  (state.buildings||[]).forEach(b=>{ const pp=PBY[b.parcel]; if(!pp) return; condInfo(b).hits.forEach(h=>{ const k=h.id+'@'+b.parcel; if(state.hzSeen.includes(k)) return; state.hzSeen=state.hzSeen.concat([k]).slice(-80); ch=true;
+    const H=HAZARDS[h.type], D=BUILDING_DEFS[b.def]; emit('BUILDING_DAMAGED',{parcel:b.parcel, hazard:h.type});
+    chron('BuildingDamaged',`${H.name} damaged your ${D.name} in ${R[pp.t].name}`,`${h.source==='real'?`Real weather at ${h.where||TWINS[pp.t].name}, ${R[pp.t].name}'s twin on Earth: ${h.reading||'severe'}. `:''}It lost ${H.dmg}% of its condition. Repair it on ${landWord(pp).toLowerCase()} ${b.parcel}.`,pp.t,'notable');
+    toast(`${H.name} in ${R[pp.t].name}: your ${D.name} was ${H.verb}. Repair it to restore full output.`); }); });
+  return ch; }
+/* On xland.world: the server's condition and repair price for each finished building. */
+async function syncBuilds(){ if(!serverMode||!serverBE||!(state.buildings||[]).length) return; let j; try{ j=await serverBE.call('GET','/builds'); }catch(e){ return; }
+  let ch=false; (j.builds||[]).filter(x=>x.status==='complete'&&x.cond!=null).forEach(x=>{ const b=state.buildings.find(y=>y.parcel===x.parcel&&y.def===x.def); if(!b) return;
+    if(b.key!==x.key || !b.srv || b.srv.cond!==x.cond){ ch=true; } b.key=x.key; b.srv={cond:x.cond, hits:x.hits||[], repair:x.repair, at:Date.now()}; });
+  if(damageNotices()) ch=true; if(ch){ save(); livingChanged(); } }
+function livingChanged(){ const {route,arg}=parse(); if(route==='world') socialChanged(); else if(route==='parcel' && PBY[arg] && !(document.activeElement&&document.activeElement.tagName==='INPUT')) render(); }
+function hazardBanner(t){ const hs=liveHazards().filter(h=>!t||h.territory===t); if(!hs.length) return '';
+  return `<div class="ev-banner">${hs.map(h=>`<div class="hz hz-${h.type}"><b>${esc(HAZARDS[h.type].name)} in ${esc(R[h.territory].name)} <span class="mstate voting">${h.source==='real'?'Live from Earth':'Active'}</span></b><span>${h.source==='real'?`Real weather at ${esc(h.where||TWINS[h.territory].name)}: ${esc(h.reading||'')}. `:''}${esc(HAZARDS[h.type].effect)} Until ${new Date(h.end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}.</span></div>`).join('')}</div>`; }
+function twinLine(t){ const tw=TWINS[t]; if(!tw) return ''; const w=serverMode&&world&&world.living&&world.living.weather?world.living.weather[t]:null;
+  return `<p class="twin meta">${ICON.world}<span>Twin on Earth: <b>${esc(tw.name)}</b>${w?`, now ${Math.round(w.temp)}°C, wind ${Math.round(w.wind)} km/h${w.gust?`, gusts ${Math.round(w.gust)}`:''}`:''}</span></p>`; }
+function landSummary(t){ const ls=lotsIn(t); if(!ls.length) return '';
+  const st=ls.map(lotState), free=st.filter(x=>x==='free').length, mine=st.filter(x=>x==='mine').length, held=st.filter(x=>x==='held').length;
+  return `<div class="panel-section land-sum"><h3>Land</h3><p><b>${free}</b> of ${ls.length} lots free${mine?`, <b>${mine}</b> yours`:''}${held?`, ${held} held by others`:''}. Zoom in and tap a marked lot on the map to see it.</p></div>`; }
+const BICON = {
+  homax:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" fill="currentColor"/></svg>',
+  farmstead:'<svg viewBox="0 0 24 24"><path d="M2.5 21V11l7-5 7 5v10Z" fill="currentColor"/><rect x="17.5" y="7" width="4" height="14" rx="2" fill="currentColor" opacity=".75"/></svg>',
+  granary:'<svg viewBox="0 0 24 24"><rect x="3" y="8" width="7" height="13" rx="1" fill="currentColor"/><path d="M3 8a3.5 3.5 0 0 1 7 0Z" fill="currentColor" opacity=".75"/><rect x="13" y="10" width="7" height="11" rx="1" fill="currentColor"/><path d="M13 10a3.5 3.5 0 0 1 7 0Z" fill="currentColor" opacity=".75"/></svg>',
+  caravanserai:'<svg viewBox="0 0 24 24"><path d="M2 21V12h4V9h12v3h4v9Z" fill="currentColor" opacity=".75"/><path d="M12 3a4.5 4.5 0 0 1 4.5 4.5H7.5A4.5 4.5 0 0 1 12 3Z" fill="currentColor"/></svg>'
+};
+
 function parcelAvail(pp, st){ st=st||state; if(TERR[pp.t].access==='LOCKED') return 'LOCKED'; if(pp.fixed) return pp.fixed; if(pp.leaseOnly) return 'LEASE ONLY'; if(rightFor(st,pp.id)) return 'HELD'; if(st===state && social.claims[pp.id] && social.claims[pp.id].owner && social.claims[pp.id].owner!==social.me) return 'HELD'; return 'AVAILABLE'; }
 function finishParcelBuy(id){ const pp=PBY[id]; emit('PROPERTY_RIGHT_ACQUIRED',{parcel:id}); chron('PropertyAcquired',`Parcel ${id} acquired in ${R[pp.t].name}`,`Rights: ${pp.rights.join(', ')}.`,pp.t,pp.building==='homax'?'notable':'ordinary'); save(); render(); toast(`Parcel ${id} is yours.`); }
 function acquireParcel(st, id, residents){ const pp=PBY[id]; if(!pp) return {ok:false, why:'No such parcel.'};
@@ -1584,6 +1691,7 @@ function acquireParcel(st, id, residents){ const pp=PBY[id]; if(!pp) return {ok:
   if(av!=='AVAILABLE') return {ok:false, why:`This parcel is ${av.toLowerCase()}. ${pp.note||''}`};
   if(!st.passport) return {ok:false, why:'A passport is required.'};
   if(st.currentRegion!==pp.t) return {ok:false, why:`Acquisition happens on site. You must be in ${R[pp.t].name}.`};
+  if(pp.lot && heldLotsIn(st,pp.t)>=SIM.lotCapPerTerritory) return {ok:false, why:`One citizen can hold up to ${SIM.lotCapPerTerritory} lots in each territory. Build on the land you have first.`};
   { const res=residents||(st===state?residentsNow():{}), already=(st.rights||[]).some(r=>r.status==='active'&&r.territory===pp.t);
     if(!already && POP.share[pp.t]!=null && roomIn(pp.t,res)<=0) return {ok:false, why:`Every home open in ${R[pp.t].name} in stage ${popStage(res)+1} is lived in. The next stage opens when 90% of this one is lived in across Xland.`}; }
   const price=BigInt(pp.price)*UNIT; if(BigInt(st.bal.bux)<price) return {ok:false, why:`The simulated terms are ${pp.price} BuX; you hold ${fmtAmt(st.bal.bux)}.`};
@@ -1732,7 +1840,7 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
    The server applies only valid operations. When the outbox is empty and the page has mirrored everything the server
    did (seams, harvests, market settlements), the page aligns its balances with the server's, recording any difference
    as an adjustment so the ledger still adds up. */
-const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-'];   // r53: build sites are reserved, committed and released by the server
+const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-','parcel-','repair-'];   // r55: land is bought through /api/land/buy and repairs through /api/build/repair   // r53: build sites are reserved, committed and released by the server
 /* Construction timed by the server (r53): the page asks the server first and only then mirrors the reservation locally. */
 async function srvBuild(path){ try{ return await serverBE.call('POST',path); }catch(e){ toast(e.message||'The build site could not be reached.'); throw e; } }
 function outboxPush(body){ if(!state.passport || SERVER_CREDITED.some(p=>body.op.startsWith(p))) return; state.outbox=state.outbox||[]; state.outbox.push(body); clearTimeout(outboxPush.t); outboxPush.t=setTimeout(()=>walletSync(), 1200); }
@@ -1782,11 +1890,12 @@ function seamRewardU(mined){ const e=quarxEpoch(mined); return isFinite(e) ? Mat
 function nextHalvingAtU(mined){ const e=quarxEpoch(mined); return isFinite(e) ? Math.ceil(MINABLE_U*(1-2**-(e+1))) : MINABLE_U; }
 function difficultyFor(miners){ return Math.max(1, miners/ECONOMY.targetMiners); }
 let world=null;
-async function refreshWorld(){ if(!serverMode||!serverBE) return; try{ world=await serverBE.call('GET','/world'); world.at=Date.now(); }catch(e){ return; }
+async function refreshWorld(){ if(!serverMode||!serverBE) return; const hz0=JSON.stringify(((world||{}).living||{}).hazards||[]); try{ world=await serverBE.call('GET','/world'); world.at=Date.now(); }catch(e){ return; }
+  if(JSON.stringify((world.living||{}).hazards||[])!==hz0){ if(damageNotices()) save(); livingChanged(); syncBuilds(); }
   const {route,arg}=parse(); if(route==='place' && ['quarx','vaults','banx'].includes(arg)){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
   if(route==='founder' && social.isOwner) render();
   const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML()+worldMarketHTML(); }
-function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx'].includes(arg))||route==='economy'||route==='founder'; }
+function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx','bazaar','fields'].includes(arg))||route==='economy'||route==='founder'||route==='world'||route==='region'||route==='parcel'||route==='lab'; }
 const fmtU = (u, dp=0) => (Number(u)/Number(UNIT)).toLocaleString('en-US',{maximumFractionDigits:dp});
 function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the world ledger…</p>':'';
   const q=world.quarx, pct=q.mined/q.minable*100;
@@ -1805,7 +1914,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r54';
+const BUILD = 'r55';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1843,8 +1952,13 @@ function milestones(st){ st=st||state; const L=st.ledger, has=p=>L.some(e=>e.op.
     build:(st.buildings||[]).length>0||(st.builds||[]).length>0, vote:(st.proposals||[]).some(p=>p.myVote)||(st.sharedVotes||0)>0, parx:(st.parxPosts||0)>0, shop:!!st.shop, sale:has('mkt-sale-'), bought:has('mkt-recv-'), mission:Object.entries(st.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='rewarded'), firstSteps:!!(st.guide&&st.guide.finished) }; }
 async function publishProgress(){ if(!social.db||!social.me||!social.writable) return;
   try{ await social.db.doc('progress/'+social.me).set({v:1, handle:(state.privacy||{}).name!=='private'?state.handle:'', identity:state.identity, milestones:milestones(), route:location.hash, build:BUILD, updatedAt:Date.now(), createdAt:state.createdAt||null}); }catch(e){} }
-function myStructures(){ const out=[]; (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(pp) out.push({kind:pp.building==='homax'?'homax':'parcel', parcel:pp.id, at:pp.at, t:pp.t}); });
-  (state.buildings||[]).forEach(b=>{ const pp=PBY[b.parcel]; if(pp) out.push({kind:'farmstead', parcel:b.parcel, at:[pp.at[0]+6,pp.at[1]+4], t:pp.t}); }); return out; }
+function myStructures(){ const out=[];
+  (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(!pp) return; const b=buildingOn(pp.id), pr=(state.projects||[]).find(x=>x.parcel===pp.id&&x.status==='active');
+    if(b) out.push({kind:b.def, parcel:pp.id, at:pp.at, t:pp.t, cond:Math.round(condOf(b))});
+    else if(pr) out.push({kind:'scaffold', def:pr.def, parcel:pp.id, at:pp.at, t:pp.t, f:Math.round(Math.min(1,(Date.now()-pr.start)/(pr.end-pr.start))*100)/100});
+    else out.push({kind:pp.building==='homax'?'homax':'parcel', parcel:pp.id, at:pp.at, t:pp.t}); });
+  return out.slice(0,40); }
+
 async function publishCitizen(){ if(!social.db || !social.me || !state.passport || !social.writable) return; const pv=state.privacy||{};
   const card={ v:1, handle: pv.name!=='private'?state.handle:'', title: pv.title!=='private'&&state.title&&ACH.find(a=>a.id===state.title)?ACH.find(a=>a.id===state.title).name:'',
     identity: state.identity, region: (pv.presence||'citizens')!=='private'?(state.currentRegion||null):null, home: pv.relations!=='private'&&state.homes[0]?state.homes[0].region:null,
@@ -1967,7 +2081,7 @@ async function connect(){
       if(adopt || (rs.updatedAt||0) >= (state.updatedAt||0)){ state = rs; try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){} render(); }
       else save();
     } else if(state.passport){ save(); }
-    if(serverMode){ setTimeout(walletSync, 400); setInterval(walletSync, 30000); }
+    if(serverMode){ setTimeout(walletSync, 400); setInterval(walletSync, 30000); setTimeout(syncBuilds, 1500); setInterval(()=>{ refreshWorld(); syncBuilds(); }, 120000); }
   }catch(e){ remote=null; }
 }
 
@@ -2291,11 +2405,12 @@ const XW = (function(){
     const pt=(x,y,z,col,size,type)=>PTS.push(x,y,z,col[0],col[1],col[2],size,type||0,r());
     const NOG=[0,0,0,0];
     const CLEAR=PLACES.filter(q=>q.at&&q.r).map(q=>[q.at[0],q.at[1],q.r]); const cleared=(px,py)=>CLEAR.some(c=>Math.hypot(px-c[0],py-c[1])<c[2]);
+    const LOTCLEAR={xetropolitan:PARCELS.filter(p=>p.t==='xetropolitan'&&p.builds).map(p=>p.at), ximberland:PARCELS.filter(p=>p.t==='ximberland').map(p=>p.at)};
     // Xetropolitan megacity
     const cs=R.xetropolitan.geo.seed, ang=.21, ca=Math.cos(ang), sa=Math.sin(ang), cw=toW(cs[0],cs[1]);
     for(let a=-24;a<24;a++) for(let b=-24;b<24;b++){
       const u=(a+.5)*1.1, v=(b+.5)*1.1, x=cw[0]+ca*u-sa*v, z=cw[1]+sa*u+ca*v, px=x*10/K+500, py=z*10/K+360;
-      const w=wAt('xetropolitan',px,py); if(w<.6 || heightAt(px,py)<.1 || cleared(px,py) || DR[gridIdx(px,py)]<26 || px>548) continue;
+      const w=wAt('xetropolitan',px,py); if(w<.6 || heightAt(px,py)<.1 || cleared(px,py) || DR[gridIdx(px,py)]<26 || px>548 || LOTCLEAR.xetropolitan.some(c=>Math.hypot(px-c[0],py-c[1])<7.6)) continue;
       const d=Math.hypot(u,v), core=Math.exp(-(d/(6.5*K))*(d/(6.5*K)));
       let hgt=.7+r()*1.1+15*core*(.45+r()*.85)*sm(.6,.9,w);
       const fp=.6+r()*.22, glass=r()<.75;
@@ -2313,14 +2428,15 @@ const XW = (function(){
       const px=60+r()*880, py=60+r()*600, h=heightAt(px,py); if(h<.25) continue;
       const k=gridIdx(px,py), wf=W[SIDX.ximberland][k], wa=W[SIDX.xalp][k], wt=W[SIDX.tundrax][k];
       const p=wf*sm(.35,.65,wf)*.95 + wa*(h<4.8?.35:0)*(NYv[k]>.8?1:0) + wt*.04;
-      if(r()>p || DR[k]<12 || cleared(px,py)) continue;
+      if(r()>p || DR[k]<12 || cleared(px,py) || (wf>.5 && LOTCLEAR.ximberland.some(c=>Math.hypot(px-c[0],py-c[1])<4.6))) continue;
       const g=.6+r()*.5; put('cone',px,py,.34+r()*.18,1.1+r()*1.1,.34+r()*.18,0,[.08*g,.22*g+.06,.12*g],NOG); nT++;
     }
     // Xetland reeds
     for(let t=0,n=0;t<9000 && n<(small?420:800);t++){ const px=360+r()*260, py=520+r()*170, h=heightAt(px,py);
       if(wAt('xetland',px,py)<.6 || h<-.05 || h>.55) continue; put('cone',px,py,.07,.45+r()*.4,.07,0,[.42,.42,.2],NOG); n++; }
     // FarmX barns and silos
-    for(let t=0,n=0;t<5000 && n<30;t++){ const px=180+r()*360, py=380+r()*240; if(wAt('farmx',px,py)<.75 || heightAt(px,py)<.2) continue;
+    const farmLots=PARCELS.filter(p=>p.t==='farmx').map(p=>p.at);
+    for(let t=0,n=0;t<5000 && n<30;t++){ const px=180+r()*360, py=380+r()*240; if(wAt('farmx',px,py)<.75 || heightAt(px,py)<.2 || farmLots.some(c=>Math.hypot(px-c[0],py-c[1])<6)) continue;
       if(n%2) put('cyl',px,py,.32,1.6,.32,0,[.62,.6,.55],NOG); else put('house',px,py,1.1,.95,.7,r()*3,[.42,.16,.12],[1,.75,.4,1]); n++; }
     // Xalp resort lodges
     for(let t=0,n=0;t<9000 && n<22;t++){ const px=560+r()*320, py=110+r()*260, h=heightAt(px,py), k=gridIdx(px,py);
@@ -2433,16 +2549,20 @@ const XW = (function(){
     const pt=(px,py,yy,col,size,type)=>{ const [x,z]=toW(px,py); PTS.push(x,heightAt(px,py)+yy,z,col[0],col[1],col[2],size,type||0,Math.random()); };
     const N=[0,0,0,0];
     userList.forEach(u=>{ let top=2; const a=u.at;
-      if(u.kind==='homax'){ put('house',a[0],a[1],1.4,1.3,1.05,.4,[.66,.5,.32],[1,.85,.5,1]); pt(a[0],a[1],1.7,[1,.82,.45],4.5,2); top=1.9; }
+      if(u.kind==='homax'){ const d=u.cond!=null&&u.cond<40; put('house',a[0],a[1],1.4,1.3,1.05,.4,[.66,.5,.32],d?N:[1,.85,.5,1]); if(!d) pt(a[0],a[1],1.7,[1,.82,.45],4.5,2); top=1.9; }
       else if(u.kind==='monument'){ put('cyl',a[0],a[1],1.3,.5,1.3,0,[.7,.68,.66],N); put('cyl',a[0],a[1],.42,5.6,.42,0,[.86,.84,.8],N,.5); put('cone',a[0],a[1],.75,2.3,.75,0,[.55,.3,.95],[.62,.36,1,2],6);
         pt(a[0],a[1],7,[.7,.45,1],7,2); pt(a[0],a[1],7.2,[.85,.7,1],2.6,0); top=8.6; }
       else if(u.kind==='parcel'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.9,.06,0,[.4,.85,.95],[.4,.85,.95,2])); pt(a[0],a[1],.4,[.45,.9,1],3.5,2); top=1.1; }
+      else if(u.kind==='forsale' && u.lot){ [[-3.4,-3.4],[3.4,-3.4],[-3.4,3.4],[3.4,3.4]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.05,.7,.05,0,[.95,.91,.8],[1,.95,.8,.5])); pt(a[0],a[1],.3,[1,.94,.78],2.2,2); top=.9; }
       else if(u.kind==='forsale'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.95,.06,0,[.95,.91,.8],[1,.95,.8,.6])); pt(a[0],a[1],.35,[1,.94,.78],3,2); top=1.1; }
       else if(u.kind==='held'){ [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.06,.8,.06,0,[.85,.66,.32],[1,.8,.4,1])); put('cyl',a[0],a[1],.05,1.9,.05,0,[.8,.78,.72],N); put('box',a[0]+.9,a[1],.9,.45,.05,0,[.85,.62,.28],[1,.78,.4,1],1.4); top=2.2; }
-      else if(u.kind==='farmstead'){ put('house',a[0],a[1],1.4,1.1,1,.3,[.48,.3,.18],[1,.78,.45,1]); put('cyl',a[0]+5,a[1]-2,.32,1.8,.32,0,[.66,.64,.6],[0,0,0,0]); pt(a[0],a[1],1.4,[1,.8,.45],2.4,0); top=2; }
+      else if(u.kind==='farmstead'){ put('house',a[0],a[1],1.4,1.1,1,.3,[.48,.3,.18],u.cond!=null&&u.cond<40?N:[1,.78,.45,1]); put('cyl',a[0]+5,a[1]-2,.32,1.8,.32,0,[.66,.64,.6],[0,0,0,0]); pt(a[0],a[1],1.4,[1,.8,.45],2.4,0); top=2; }
       else if(u.kind==='shop'){ const c=u.tint||[.85,.62,.3]; put('box',a[0],a[1],1.7,1.1,1.3,u.rot||0,[.42,.34,.26],N); put('cone',a[0],a[1],1.45,.8,1.45,u.rot||0,c,[c[0],c[1],c[2],.8],1.1);
         pt(a[0],a[1],2.1,[1,.84,.5],u.mine?4.2:3.2,2); top=2.1; }
       else if(u.kind==='scaffold'){ const h=u.h||1; put('box',a[0],a[1],1.6,h,1.6,0,[.36,.33,.3],[1,.75,.4,1]); for(let i=0;i<4;i++) pt(a[0]+(i%2?5:-5),a[1]+(i<2?5:-5),h+.3,[1,.75,.35],1,0); top=h+.5; }
+      else if(u.kind==='granary'){ const d=u.cond!=null&&u.cond<60; put('cyl',a[0]-1.5,a[1],.55,2.3,.55,0,[.72,.66,.55],N); put('dome',a[0]-1.5,a[1],.56,.4,.56,0,[.6,.3,.18],N,2.3); put('cyl',a[0]+1.6,a[1]+.6,.48,1.9,.48,0,[.7,.64,.54],N); put('dome',a[0]+1.6,a[1]+.6,.49,.36,.49,0,[.6,.3,.18],N,1.9); put('box',a[0],a[1]-2,1.1,.8,.8,0,[.45,.2,.14],d?N:[1,.78,.45,1]); top=2.9; }
+      else if(u.kind==='caravanserai'){ [[0,-4.2,2.4,.6],[0,4.2,2.4,.6],[-4.2,0,.6,2.4],[4.2,0,.6,2.4]].forEach(([dx,dz,sx,sz])=>put('box',a[0]+dx,a[1]+dz,sx,.75,sz,0,[.78,.62,.42],N)); put('dome',a[0],a[1],.8,.7,.8,0,[.85,.75,.55],N); pt(a[0],a[1],1.2,[1,.72,.4],2.2,0); top=1.6; }
+      if(u.cond!=null && u.cond<60){ pt(a[0],a[1],top+.2,[1,.3,.15],u.cond<30?3.2:2,1); }
       const [x,z]=toW(a[0],a[1]); placeAnchors['u-'+u.id]=[x,heightAt(a[0],a[1])+top+.4,z]; });
     userObjs=[]; for(const g in L) if(L[g].length) userObjs.push(makeInstanced(GEOS[g],L[g]));
     userPts = PTS.length ? makePoints(PTS) : null;
@@ -2647,10 +2767,10 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   /* ---- camera ---- */
   const cam={tx:0,ty:0,tz:2,yaw:0,pitch:.92,dist:100}, goal={...cam};
   let shiftY=0, host=null, mode='world', focus=null, selected=null, deps=false, shift=0, userMoved=false, raf=0, last=0, t0=performance.now(), cssW=1, cssH=1, VP=null, eye=[0,0,0], fov=.68;
-  let labelEls={}, arcSvg=null, onSelect=null, onPlace=null, overlayEl=null, regionNotes={};
+  let labelEls={}, arcSvg=null, onSelect=null, onPlace=null, onParcel=null, overlayEl=null, regionNotes={};
   function buildUserLabels(lay){
     for(const k in placeEls) if(k.startsWith('u-')){ placeEls[k].remove(); delete placeEls[k]; }
-    userList.forEach(u=>{ if(mode==='region' && u.region!==focus) return;
+    userList.forEach(u=>{ if(mode==='region' && (u.region!==focus || (u.lot && u.kind==='forsale'))) return;
       const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'?'plot sale':u.kind==='held'?'plot held':u.kind==='shop'?'plot shop':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.dataset.region=u.region||''; el.innerHTML=`<i></i>${esc(u.label)}`;
       if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',u.label); } lay.insertBefore(el, lay.firstChild); placeEls['u-'+u.id]=el; }); }
   function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
@@ -2712,6 +2832,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   const nearHouse = g => g && Math.hypot(g[0]-HOUSE[0],g[1]-HOUSE[1])<9;
   function pick(clx,cly){
     const g0=groundAt(clx,cly); if(nearHouse(g0)){ if(onPlace) onPlace('house'); return; }
+    if(g0 && onParcel && mode==='world'){ let best=null, bd=1e9; userList.forEach(u=>{ if(!u.parcel) return; const d=Math.hypot(u.at[0]-g0[0],u.at[1]-g0[1]); if(d<bd){ bd=d; best=u; } }); if(best && bd<5){ onParcel(best.parcel); return; } }
     const rc=canvas.getBoundingClientRect(); const nx=(clx-rc.left)/rc.width*2-1+shift, ny=1-(cly-rc.top)/rc.height*2+shiftY;
     const e=eyeOf(cam); let fx=cam.tx-e[0], fy=cam.ty-e[1], fz=cam.tz-e[2]; let l=Math.hypot(fx,fy,fz); fx/=l;fy/=l;fz/=l;
     let rx=fz*0-fy*0, ry=0; rx=-fz; let rz=fx; l=Math.hypot(rx,rz); rx/=l; rz/=l; // right = f x up
@@ -2820,7 +2941,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   }
   function attach(h,opts){
     if(!init()) return false;
-    host=h; mode=opts.mode; focus=opts.focus||null; selected=opts.selected||null; selPlace=opts.place||null; deps=!!opts.deps; shift=opts.shift||0; onSelect=opts.onSelect||null; onPlace=opts.onPlace||null; hoverHouse=false; userMoved=false;
+    host=h; mode=opts.mode; focus=opts.focus||null; selected=opts.selected||null; selPlace=opts.place||null; deps=!!opts.deps; shift=opts.shift||0; onSelect=opts.onSelect||null; onPlace=opts.onPlace||null; onParcel=opts.onParcel||null; hoverHouse=false; userMoved=false;
     canvas.style.touchAction = mode==='world' ? 'none' : 'auto'; canvas.style.pointerEvents = mode==='world' ? 'auto' : 'none';
     h.appendChild(canvas);
     if(ro) ro.disconnect(); ro=new ResizeObserver(()=>resize()); ro.observe(h);
@@ -2839,7 +2960,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   let storm=false, routeState=[]; function setWorld(o){ storm=!!o.storm; routeState=o.routes||[]; if(arcSvg) arcSvg.querySelectorAll('path.arc').forEach((pth,i)=>pth.classList.toggle('disrupted', routeState.includes(DEPS[i].from+'>'+DEPS[i].to))); }
   function setUserObjects(list){ userList=list||[]; userDirty=true; if(overlayEl && host && host.isConnected) buildUserLabels(overlayEl); }
   function setPlace(id){ selPlace=id; for(const k in placeEls) placeEls[k].classList.toggle('sel',k===id); }
-  return { regionAt:(px,py)=>built?regionAt(px,py):null, supported:()=>init(), attach, flyTo:(id)=>flyTo(id,false), flyToPlace, flyToPoint:(px,py)=>{ if(built) flyToPoint(px,py); }, setRegionNotes, setPlace, setSelected, setUserObjects, setBurn, setWorld, setInset, setDeps:(d)=>{ deps=d; if(arcSvg) arcSvg.style.display=d?'':'none'; }, setShift:(s)=>{shift=s;} };
+  return { regionAt:(px,py)=>built?regionAt(px,py):null, probe:(px,py)=>{ if(!built) return null; const k=gridIdx(px,py), w={}; SEEDED.forEach((r,i)=>w[r.id]=W[i][k]); return {r:regionAt(px,py), h:heightAt(px,py), dr:DR[k], ny:NYv[k], w}; }, supported:()=>init(), attach, flyTo:(id)=>flyTo(id,false), flyToPlace, flyToPoint:(px,py)=>{ if(built) flyToPoint(px,py); }, setRegionNotes, setPlace, setSelected, setUserObjects, setBurn, setWorld, setInset, setDeps:(d)=>{ deps=d; if(arcSvg) arcSvg.style.display=d?'':'none'; }, setShift:(s)=>{shift=s;} };
 })();
 
 /* ---------------- Chrome ---------------- */
@@ -2982,16 +3103,19 @@ function parcelActions(pp){ const st=parcelStanding(pp), here=state.currentRegio
   return `<a class="btn btn-gold" href="#/parcel/${pp.id}">Review the deed and buy</a>`; }
 function panelParcel(pp){ const r=R[pp.t], st=parcelStanding(pp);
   return `<button class="back link" data-act="select" data-id="${r.id}" style="margin-bottom:1rem">${ICON.back} ${esc(r.name)}</button>
-  <div class="panel-head tinted" style="--h:${r.geo.hue}">${emblem(r.id,64)}<div><h2 class="display" style="font-size:1.9rem">Parcel ${esc(pp.id)}</h2><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
+  <div class="panel-head tinted" style="--h:${r.geo.hue}">${emblem(r.id,64)}<div><h2 class="display" style="font-size:1.9rem">${landWord(pp)} ${esc(pp.id)}</h2><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
   <dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${esc(pp.zoning.join(', '))}</dd>${pp.price?`<dt>Price</dt><dd>${pp.price} BuX <span class="tag tag-sim">Simulation</span></dd>`:''}<dt>Rights</dt><dd>${esc(pp.rights.join(', ')||'None')}</dd>${pp.excluded.length?`<dt>Not included</dt><dd>${esc(pp.excluded.join(', '))}</dd>`:''}</dl>
-  ${pp.note?`<p class="meta" style="margin-top:.9rem">${esc(pp.note)}</p>`:''}
+  ${pp.note?`<p class="meta" style="margin-top:.9rem">${esc(pp.note)}</p>`:''}${lotBuildsHTML(pp)}
   <div class="btn-row" style="margin-top:1.4rem">${parcelActions(pp)}</div>`; }
+function lotBuildsHTML(pp){ if(!(pp.builds||[]).length) return ''; const b=rightFor(state,pp.id)?buildingOn(pp.id):null;
+  return `${b?`<p class="meta" style="margin-top:.6rem">Standing here: your ${esc(BUILDING_DEFS[b.def].name)}, condition ${Math.round(condOf(b))}%.</p>`:''}
+  <div class="panel-section"><h3>What can be built</h3><ul class="dep-list">${pp.builds.map(k=>`<li><span class="bicon sm" style="--h:${BUILDING_DEFS[k].hue}" aria-hidden="true">${BICON[k]||''}</span><span><b>${esc(BUILDING_DEFS[k].name)}</b>: ${esc(BUILDING_DEFS[k].short)}</span></li>`).join('')}</ul></div>`; }
 function scardParcel(pp){ const st=parcelStanding(pp);
-  return `<div class="sc-head sc-parcel">${emblem(pp.t,48)}<div><b class="sc-name">Parcel ${esc(pp.id)}</b><span>${esc(pp.zoning.join(', '))}, ${esc(R[pp.t].name)}</span><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
+  return `<div class="sc-head sc-parcel">${emblem(pp.t,48)}<div><b class="sc-name">${landWord(pp)} ${esc(pp.id)}</b><span>${esc(pp.zoning.join(', '))}, ${esc(R[pp.t].name)}</span><span class="plot-tag ${st.cls}">${esc(st.text)}</span></div></div>
   <div class="btn-row">${parcelActions(pp)}<button class="sc-link" data-act="select" data-id="${pp.t}">Back</button></div>`; }
 function selectParcel(id){ const pp=PBY[id]; if(!pp) return; ui.parcel=id; ui.place=null; ui.selected=pp.t; inspect(pp.t);
   const stage=$('#map-stage'), panel=$('#world-panel'), card=$('#scard');
-  if(stage && !stage.classList.contains('flat')){ XW.setSelected(pp.t); XW.setPlace('u-p-'+id); XW.flyToPoint(pp.at[0],pp.at[1]); }
+  if(stage && !stage.classList.contains('flat')){ XW.setSelected(pp.t); XW.setUserObjects(userObjects()); XW.setPlace('u-p-'+id); XW.flyToPoint(pp.at[0],pp.at[1]); }
   if(panel) panel.innerHTML=panelParcel(pp);
   if(card){ card.innerHTML=scardParcel(pp); card.hidden=false; card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); requestAnimationFrame(()=>XW.setInset(window.matchMedia('(max-width:820px)').matches?card.offsetHeight+16:0)); } }
 function scardPlace(q){
@@ -3013,7 +3137,7 @@ function panelDetail(r){
   let html=`<button class="back link" data-act="deselect" style="margin-bottom:1rem">${ICON.back} All territories</button>
   <div class="panel-head tinted" style="--h:${r.geo.hue}">${emblem(r.id,88)}<div><h2 class="display" style="font-size:2.1rem">${esc(r.name)}</h2>${chip(r.status)}</div></div>
   <p class="meta">${esc(peopleLine(r))}. ${esc(r.type)}.</p>${social.db?`<p class="meta" style="margin-top:.3rem"><b style="color:var(--cyan)">${citizensOnline(r.id).length}</b> other citizen${citizensOnline(r.id).length===1?'':'s'} here now</p>`:''}
-  <p style="margin-top:1rem;line-height:1.55">${esc(r.role)}</p><p class="landscape" style="font-size:1rem">${esc(r.landscape)}</p>`;
+  <p style="margin-top:1rem;line-height:1.55">${esc(r.role)}</p><p class="landscape" style="font-size:1rem">${esc(r.landscape)}</p>${twinLine(r.id)}${landSummary(r.id)}`;
   if(pos.length||neg.length) html+=`<div class="ledger"><div class="pos"><h3>Advantages</h3><ul>${pos.map(i=>`<li>${item(i)}</li>`).join('')}</ul></div><div class="neg"><h3>Constraints</h3><ul>${neg.map(i=>`<li>${item(i)}</li>`).join('')}</ul></div></div>`;
   if(r.deps.length) html+=`<div class="panel-section"><h3 style="font-size:.82rem;color:var(--muted)">Connections</h3><ul class="dep-list">${r.deps.map(([id,t])=>`<li>${ICON.arrow}<span>${esc(t)}</span></li>`).join('')}</ul></div>`;
   if(el.kind==='locked'||el.kind==='mythic') html+=`<div class="lock-note ${el.kind==='mythic'?'mythic':''}">${ICON[el.kind==='mythic'?'mythic':'locked']}<span>${esc(el.text)}</span></div>`;
@@ -3075,7 +3199,8 @@ function viewRegion(id){
     <div class="cols">
       ${r.deps.length?`<div class="col"><h2>Connections</h2><ul class="plain">${r.deps.map(([d,t])=>`<li>${esc(t)}<br><a class="link link-muted" href="#/region/${d}" style="font-size:.86rem">${esc(R[d].name)}</a></li>`).join('')}</ul></div>`:''}
       ${sec('Open questions', r.tbd)}
-      ${PARCELS.some(pp=>pp.t===r.id)?`<div class="col"><h2>Land registry</h2><ul class="plain">${PARCELS.filter(pp=>pp.t===r.id).map(pp=>`<li><a class="link" href="#/parcel/${pp.id}"><b>${pp.id}</b></a> ${parcelBadge(pp)}<br><span class="meta">${pp.zoning.join(', ')}${pp.price?`, ${pp.price} BuX (simulation)`:''}</span></li>`).join('')}</ul></div>`:''}
+      ${PARCELS.some(pp=>pp.t===r.id)?(()=>{ const all=PARCELS.filter(pp=>pp.t===r.id), mineL=all.filter(pp=>rightFor(state,pp.id)), freeL=all.filter(pp=>lotState(pp)==='free'), rest=all.filter(pp=>!pp.lot&&!mineL.includes(pp)&&!freeL.slice(0,6).includes(pp)), show=mineL.concat(freeL.slice(0,6)).concat(rest);
+        return `<div class="col"><h2>Land registry</h2><p class="meta" style="margin-bottom:.7rem">${all.length} parcels and lots, ${freeL.length} free now.</p><ul class="plain">${show.slice(0,12).map(pp=>`<li><a class="link" href="#/parcel/${pp.id}"><b>${pp.id}</b></a> ${parcelBadge(pp)}<br><span class="meta">${pp.zoning.join(', ')}${pp.price?`, ${pp.price} BuX (simulation)`:''}</span></li>`).join('')}</ul><a class="link" href="#/world" data-act="select" data-id="${r.id}">See every lot on the map</a></div>`; })():''}
       <div class="col"><h2>Territory health</h2><ul class="plain">${territoryHealth(r.id).map(([k,v])=>`<li><b>${k}:</b> ${esc(String(v))}</li>`).join('')}</ul><p class="meta faint" style="margin-top:.6rem">Separate dimensions, no single score and no price.</p></div>
       <div class="col"><h2>Territory state</h2><ul class="plain">${social.db?`<li><b>Citizens here now:</b> ${citizensOnline(r.id).length}</li>`:''}<li><b>Your knowledge:</b> ${discBadge(terrDisc(r.id))}</li><li><b>Access:</b> ${esc(TERR[r.id].access)}</li>${TERR[r.id].resaleFloor?`<li><b>Resale floor:</b> acquisition price + ${TERR[r.id].resaleFloor.deltaBuX} BuX${TERR[r.id].hardship?`, rising ${TERR[r.id].hardship.ratePerYearBps/100}% per year held up to ${TERR[r.id].hardship.capBps/100}% (endurance premium, provisional)`:''}</li>`:''}<li><b>Tax:</b> ${esc(TERR[r.id].tax.note)}</li>${territoryWorld(r.id).map(([k,v])=>`<li><b>${esc(k)}:</b> ${esc(String(v))}</li>`).join('')}</ul></div>
       <div class="col"><h2>Access</h2><ul class="plain"><li>${esc(el.text)}</li>${state.affinity===r.id?'<li>This is your home affinity.</li>':''}</ul></div>
@@ -3207,6 +3332,15 @@ function runSelfTests(){
   t('A full stage admits no new residents until the next stage opens', ()=>{ const c=clone(); c.currentRegion='farmx'; const full=!acquireParcel(c,'FX-A-01',{farmx:capacityAt('farmx',0)}).ok; return full && acquireParcel(c,'FX-A-02',{farmx:1}).ok; });
   t('The House on the River is eternal', ()=>{ const h=PBY['AQX-01'], c=clone(); c.currentRegion='aquax';
     return h.eternal && h.name==='The House on the River' && parcelAvail(h,c)==='HELD' && ['Transfer','Sale','Taxation','Demolition'].every(x=>h.excluded.includes(x)) && !acquireParcel(c,'AQX-01').ok; });
+  t('The land registry holds hundreds of unique lots from world.json', ()=>{ const ids=PARCELS.map(p=>p.id); return PARCELS.filter(p=>p.lot).length>=250 && new Set(ids).size===ids.length && WORLD.land.every(l=>PBY[l.id] && PBY[l.id].price===l.price && PBY[l.id].t===l.t); });
+  t('One citizen can hold only three lots in each territory', ()=>{ const c=clone(); c.currentRegion='farmx'; c.bal.bux=String(100000n*UNIT); const lots=PARCELS.filter(p=>p.lot&&p.t==='farmx').slice(0,4), res=lots.map(p=>acquireParcel(c,p.id,{farmx:1}).ok); return res.slice(0,3).every(Boolean) && !res[3]; });
+  t('Each lot allows only the buildings of its zoning', ()=>PARCELS.filter(p=>p.lot).every(p=>p.builds.length && p.builds.every(k=>BUILDING_DEFS[k] && BUILDING_DEFS[k].territories.includes(p.t))) && !PBY['XIM-R-01'].builds);
+  t('A storm damages a building once; repair is priced by the damage', ()=>{ if(serverMode) return true; const c=clone(), n=Date.now(), b={def:'homax', parcel:PARCELS.find(p=>p.lot&&p.t==='ximberland').id, at:n-1000};
+    c.hazards=[{id:'hz1', type:'storm', territory:'ximberland', start:n-500, end:n+60000}, {id:'hz0', type:'storm', territory:'ximberland', start:n-5000, end:n-2000}, {id:'hz2', type:'storm', territory:'farmx', start:n-500, end:n+60000}];
+    const c1=condOf(b,c), old=state.hazards; state.hazards=c.hazards; const cost=repairCost(b); state.hazards=old;
+    return Math.round(c1)===80 && cost.bux===BigInt(Math.ceil(20/100*(120+2*SIM.rates.quarx)*.6))*UNIT && cost.quarx===0n && repairCost({def:'homax', parcel:b.parcel, at:n}).bux===0n; });
+  t('A heatwave lowers harvests only in its own territory', ()=>{ if(serverMode) return true; const old=state.hazards; state.hazards=[{id:'h', type:'heat', territory:'farmx', start:Date.now()-1, end:Date.now()+60000}]; const a=hazardMod('farmx','yieldMult',1), b=hazardMod('xalp','yieldMult',1); state.hazards=old; return a===.7 && b===1; });
+  t('Land and repairs are settled by the server, never pushed by the page', ()=>['parcel-','repair-'].every(p=>SERVER_CREDITED.includes(p)));
   t('Your wallet reconciles with the ledger', ()=>reconcile(state));
   return T;
 }
@@ -3228,6 +3362,11 @@ function viewEconomy(){
     <h2 class="display eh">Imports and exports</h2><div class="tbl"><table class="wide"><thead><tr><th>From</th><th>To</th><th>Flow</th><th>Why</th><th>Status</th><th>Route now</th></tr></thead><tbody>${FLOWS.map(([f,t,fl,w,st])=>`<tr><td>${esc(R[f].name)}</td><td>${esc(R[t].name)}</td><td>${esc(fl)}</td><td>${esc(w)}</td><td>${esc(st)}</td><td>${routeDisrupted(f,t)?'<b style="color:var(--warn)">Disrupted</b>':'Normal'}</td></tr>`).join('')}</tbody></table></div>
     <h2 class="display eh">Simulation lab</h2><p class="meta" style="margin-bottom:.8rem">World Architect tool for the prototype. Trigger a configured disruption and watch it change routes, extraction and harvests. Magnitudes are simulation parameters.</p>
     <div class="choices">${Object.entries(WEVENTS).map(([id,e])=>{ const on=activeEvents().some(x=>x.id===id); return `<div class="choice glass"><b>${esc(e.name)}</b><p class="meta">${esc(e.effect)} Lasts ${e.hours} hours.</p>${on?`<button class="btn btn-quiet" data-act="ev-clear" data-id="${id}">End event</button>`:`<button class="btn btn-quiet" data-act="ev-start" data-id="${id}">Trigger</button>`}</div>`; }).join('')}</div>
+    <h2 class="display eh">Weather lab</h2>${serverMode?`<p class="meta" style="margin-bottom:.8rem">On xland.world, real weather at each territory's twin on Earth raises hazards for everyone, once an hour.${social.isOwner?' As the founder you can also raise one by hand for every citizen.':''}</p>
+    ${social.isOwner?`<div class="hz-lab"><select class="input select" id="hz-terr">${REGIONS.filter(r=>TWINS[r.id]).map(r=>`<option value="${r.id}">${esc(r.name)} (twin: ${esc(TWINS[r.id].name)})</option>`).join('')}</select>${Object.entries(HAZARDS).map(([k,h])=>`<button class="btn btn-quiet" data-act="hz-start" data-id="${k}">${esc(h.name)}</button>`).join('')}</div>`:''}`
+    :`<p class="meta" style="margin-bottom:.8rem">On xland.world, real weather at each territory's twin on Earth raises these hazards for everyone. Here you can raise one on your own copy to see what it does.</p>
+    <div class="hz-lab"><select class="input select" id="hz-terr">${REGIONS.filter(r=>TWINS[r.id]&&TERR[r.id].access!=='LOCKED').map(r=>`<option value="${r.id}">${esc(r.name)} (twin: ${esc(TWINS[r.id].name)})</option>`).join('')}</select>${Object.entries(HAZARDS).map(([k,h])=>`<button class="btn btn-quiet" data-act="hz-start" data-id="${k}">${esc(h.name)}</button>`).join('')}</div>`}
+    ${liveHazards().length?`<p class="meta" style="margin-top:.6rem">${liveHazards().map(h=>`${esc(HAZARDS[h.type].name)} in ${esc(R[h.territory].name)} until ${new Date(h.end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`).join('; ')}.${serverMode?'':' <button class="link" data-act="hz-clear">End all</button>'}</p>`:''}
     <h2 class="display eh">Founder decisions from the legacy documents</h2><p class="meta" style="margin-bottom:.8rem">What was adopted and what was rejected, and why. The guiding rule: keep the economy balanced and impossible to dump.</p>
     <div class="tbl"><table class="wide"><thead><tr><th>Decision</th><th>Item</th><th>Reason</th></tr></thead><tbody>${FOUNDER_DECISIONS.map(([d,i,w])=>`<tr><td><span class="cs ${d==='Adopted'?'cs-founder':d==='Rejected'?'cs-tbd':'cs-canon'}">${d}</span></td><td>${esc(i)}</td><td>${esc(w)}</td></tr>`).join('')}</tbody></table></div>
     <h2 class="display eh">Emergency boundary</h2><p class="meta" style="margin-bottom:.8rem">Operational security actions are separate from governance. They never pretend to be a vote and never write a Chronicle claim of citizen approval.</p>
@@ -3411,6 +3550,7 @@ function viewFounder(){
     <dl class="kv"><dt>Testers</dt><dd>${n}</dd><dt>Active in the last day</dt><dd>${active}</dd><dt>Feedback</dt><dd>${F.length}${F.some(f=>f.rating)?` · average rating ${avg.toFixed(1)} of 5`:''}</dd></dl>
     ${serverMode?`<h2 class="display eh">The world</h2><div class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
     ${serverMode?founderWalletsHTML():''}
+    ${serverMode?`<div class="gov-box glass" style="margin-top:1.2rem"><b>Real-weather bridge</b><p class="meta" style="margin:.4rem 0 .8rem">Every hour the Worker reads the weather at each territory's twin on Earth and turns storms, floods, heavy snow and heat into hazards. ${world&&world.living&&world.living.weatherAt?`Last reading ${new Date(world.living.weatherAt).toLocaleString()}.`:'No reading yet: the hourly trigger in wrangler.toml starts with the next deploy, or read now.'} ${world&&world.living?`${world.living.landSold} parcels and lots sold so far.`:''}</p><button class="btn btn-quiet" data-act="wx-refresh">Read the real weather now</button></div>`:''}
     <h2 class="display eh">Journey funnel</h2><div class="funnel">${FUNNEL.map(([k,l])=>{ const c=P.filter(x=>x.milestones&&x.milestones[k]).length, pct=n?Math.round(c/n*100):0; return `<div class="fn-row"><span>${l}</span><i><b style="width:${pct}%"></b></i><em>${c} · ${pct}%</em></div>`; }).join('')}</div>
     <h2 class="display eh">Feedback</h2>${F.length?`<ol class="ppx">${F.slice(0,60).map(f=>`<li><div class="ppx-h"><b dir="auto">${esc(f.handle||'A tester')}</b>${f.rating?`<span class="meta">${'◆'.repeat(f.rating)}${'◇'.repeat(5-f.rating)}</span>`:''}<span class="meta">${esc(f.route)} · ${esc(f.identity||'')} · ${esc(f.build||'')} · ${new Date(f.at).toLocaleString()}</span></div><p dir="auto">${esc(f.text)}</p></li>`).join('')}</ol>`:'<p class="meta">No feedback yet.</p>'}
     <h2 class="display eh">Testers</h2><div class="tbl"><table><thead><tr><th>Tester</th><th>State</th><th>Steps</th><th>Last seen</th><th>Where</th></tr></thead><tbody>${P.sort((a,b)=>b.updatedAt-a.updatedAt).map(x=>`<tr><td dir="auto">${esc(x.handle||'A tester')}</td><td>${esc(x.identity||'')}</td><td>${x.milestones?Object.values(x.milestones).filter(Boolean).length:0} of ${FUNNEL.length}</td><td>${fmtDate(x.updatedAt)}</td><td>${esc(x.route||'')}</td></tr>`).join('')||'<tr><td colspan="5" class="meta">No testers yet.</td></tr>'}</tbody></table></div>
@@ -3420,7 +3560,7 @@ function parse(){ const h=(location.hash||'#/').slice(2).split('/'); return {rou
 let lastRoute='', lastHTML='';
 function render(){
   const {route,arg}=parse();
-  if(resolveEvents()) save(); if(advanceProposals()) save(); if(syncSharedLaws()) save(); if(applySpoilage()) save(); if(applyIdleFees()) save(); recordBranches(); generateMissions();
+  if(resolveEvents()) save(); if(advanceProposals()) save(); if(syncSharedLaws()) save(); if(applySpoilage()) save(); if(applyIdleFees()) save(); if(damageNotices()) save(); recordBranches(); generateMissions();
   checkAchievements();
   renderChrome(route==='home'?'':route);
   if(route==='profile' && state.passport && !state.seenPassport){ state.seenPassport=true; save(); }
@@ -3458,10 +3598,10 @@ function mountScene(){
   const h=document.querySelector('#app [data-scene]'); if(!h) return;
   const m=h.dataset.scene, small=window.matchMedia('(max-width:820px)').matches;
   const fallback = el => { el.classList.add('flat'); el.innerHTML = renderMap(m==='world'?{mode:'full',selected:ui.selected,deps:ui.deps}:m==='region'?{mode:'mini',highlight:h.dataset.focus}:{mode:'backdrop'}); };
-  XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); XW.setWorld({storm:activeEvents().some(e=>e.id==='storm'), routes:activeEvents().map(e=>WEVENTS[e.id].route).filter(Boolean)}); XW.setBurn(Math.log10(1+Number(burnedBuX()))/3);
+  XW.setUserObjects(userObjects()); XW.setRegionNotes(regionNotes()); XW.setWorld({storm:activeEvents().some(e=>e.id==='storm')||liveHazards().some(h=>h.type==='storm'), routes:activeEvents().map(e=>WEVENTS[e.id].route).filter(Boolean)}); XW.setBurn(Math.log10(1+Number(burnedBuX()))/3);
   const ok = XW.attach(h,{mode:m, focus:h.dataset.focus, selected:m==='world'?ui.selected:null, place:m==='world'?ui.place:(h.dataset.place||null), point:h.dataset.point?h.dataset.point.split(',').map(Number):null, deps:ui.deps,
     shift: m==='world'&&!small ? 412/Math.max(900,window.innerWidth) : (m==='backdrop'&&!small ? -.46 : 0),
-    onSelect: id=>{ if(id) select(id); }, onPlace: pid=>selectPlace(pid), fallback});
+    onSelect: id=>{ if(id) select(id); }, onPlace: pid=>selectPlace(pid), onParcel: id=>{ if(rightFor(state,id)) location.hash='#/parcel/'+id; else selectParcel(id); }, fallback});
   if(!ok) fallback(h);
   requestAnimationFrame(()=>{ const c=document.getElementById('scard'); XW.setInset(c&&!c.hidden&&small?c.offsetHeight+16:0); });
 }
@@ -3478,17 +3618,22 @@ function shopObjects(){ const now=Date.now(), out=[], seen=new Set(), per={};
     const name=sh.coop&&market.coops[sh.coop]?market.coops[sh.coop].name:sh.name;
     out.push({id:'s-'+key.replace(/[^A-Za-z0-9_-]/g,''), kind:'shop', label:mine?`Your ${c.kind.toLowerCase()} · ${name}`:name, region:t, at:[anchor[0]+Math.cos(ang)*rad, anchor[1]+Math.sin(ang)*rad], place:c.market||c.place, rot:h*3, tint:SHOP_TINT[t], mine}); });
   return out; }
+function lotTerritoriesInView(){ const {route,arg}=parse(), v=new Set(); if(ui.selected) v.add(ui.selected); if(ui.parcel&&PBY[ui.parcel]) v.add(PBY[ui.parcel].t);
+  if(route==='region') v.add(arg); if(route==='parcel'&&PBY[arg]) v.add(PBY[arg].t); return v; }
 function userObjects(){
-  const list=shopObjects();
-  (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; list.push({parcel:pp.id, id:'parcel-'+pp.id, kind:pp.building==='homax'?'homax':'parcel', label:pp.building==='homax'?`Your Homax ${pp.id}`:`Your parcel ${pp.id}`, region:pp.t, at:pp.at, place:''}); });
-  state.buildings.forEach(b=>{ const pp=PBY[b.parcel]; list.push({id:'bld-'+b.parcel, kind:'farmstead', label:`Farmstead ${b.parcel}`, region:pp.t, at:[pp.at[0]+6,pp.at[1]+4], place:'fields'}); });
-  state.projects.filter(x=>x.status==='active').forEach(x=>{ const pp=PBY[x.parcel], f=Math.min(1,(Date.now()-x.start)/(x.end-x.start)); list.push({parcel:x.parcel, id:'proj-'+x.parcel, kind:'scaffold', h:.4+f*1.6, label:'Farmstead under construction', region:pp.t, at:[pp.at[0]+6,pp.at[1]+4], place:''}); });
-  if(social.db){ social.citizens.filter(c=>c.id!==social.me).forEach(c=>(c.structures||[]).forEach((st,i)=>{ if(!st||!st.at||!['homax','farmstead'].includes(st.kind)) return;
-    list.push({id:'o-'+c.id.slice(-6)+'-'+i, kind:st.kind, label:`${citizenName(c)}'s ${st.kind==='homax'?'Homax':'Farmstead'}`, region:st.t||'', at:st.at, place:'', parcel:st.kind==='homax'?st.parcel:''}); })); }
-  if(state.parcelFocus && !rightFor(state,state.parcelFocus) && location.hash.startsWith('#/parcel/')){ const pp=PBY[state.parcelFocus]; list.push({parcel:pp.id, id:'focus', kind:'parcel', label:`Parcel ${pp.id}`, region:pp.t, at:pp.at, place:''}); }
+  const list=shopObjects(), KN=k=>(BUILDING_DEFS[k]||{}).name||'Building', view=lotTerritoriesInView();
+  (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(!pp) return; const b=buildingOn(pp.id), pr=(state.projects||[]).find(x=>x.parcel===pp.id&&x.status==='active');
+    if(b) list.push({parcel:pp.id, id:'bld-'+pp.id, kind:b.def, cond:condOf(b), label:`Your ${KN(b.def)}`, region:pp.t, at:pp.at, place:''});
+    else if(pr){ const f=Math.min(1,(Date.now()-pr.start)/(pr.end-pr.start)); list.push({parcel:pp.id, id:'proj-'+pp.id, kind:'scaffold', h:.4+f*1.6, label:`Your ${KN(pr.def)}, building`, region:pp.t, at:pp.at, place:''}); }
+    else list.push({parcel:pp.id, id:'parcel-'+pp.id, kind:pp.building==='homax'?'homax':'parcel', label:pp.building==='homax'?`Your Homax ${pp.id}`:`Your ${landWord(pp).toLowerCase()} ${pp.id}`, region:pp.t, at:pp.at, place:''}); });
+  if(social.db){ social.citizens.filter(c=>c.id!==social.me).forEach(c=>(c.structures||[]).forEach((st,i)=>{ if(!st||!st.at||!(CIVIL_KINDS.includes(st.kind)||st.kind==='scaffold')) return;
+    const nm=citizenName(c), lab=st.kind==='scaffold'?`${nm}'s ${KN(st.def)}, building`:`${nm}'s ${KN(st.kind)}`, at=st.parcel&&PBY[st.parcel]?PBY[st.parcel].at:st.at;
+    list.push({id:'o-'+c.id.slice(-6)+'-'+i, kind:st.kind, h:st.kind==='scaffold'?.4+(st.f||0)*1.6:undefined, cond:st.cond, label:lab, region:st.t||'', at, place:'', parcel:st.parcel||'', other:true}); })); }
+  if(state.parcelFocus && !rightFor(state,state.parcelFocus) && location.hash.startsWith('#/parcel/')){ const pp=PBY[state.parcelFocus]; list.push({parcel:pp.id, id:'focus', kind:'parcel', label:`${landWord(pp)} ${pp.id}`, region:pp.t, at:pp.at, place:''}); }
   PARCELS.forEach(pp=>{ if(rightFor(state,pp.id) || state.parcelFocus===pp.id) return; const av=parcelAvail(pp), cl=social.claims[pp.id];
-    if(av==='AVAILABLE') list.push({id:'p-'+pp.id, kind:'forsale', parcel:pp.id, label:`For sale · ${pp.price} BuX`, region:pp.t, at:pp.at, place:''});
+    if(av==='AVAILABLE'){ if(pp.lot && !view.has(pp.t) && ui.parcel!==pp.id) return; list.push({id:'p-'+pp.id, kind:'forsale', parcel:pp.id, lot:!!pp.lot, label:`For sale · ${pp.price} BuX`, region:pp.t, at:pp.at, place:''}); }
     else if(av==='HELD' && cl && cl.owner && cl.owner!==social.me && !list.some(u=>u.parcel===pp.id)) list.push({id:'p-'+pp.id, kind:'held', parcel:pp.id, label:cl.handle?`${cl.handle}'s land`:'Held land', region:pp.t, at:pp.at, place:''}); });
+
   if(state.builds.length) list.push({id:'monument', kind:'monument', label:state.builds[0].name, region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'});
   else if(state.construct){ const c=state.construct, f=Math.min(1,(Date.now()-c.start)/(c.end-c.start)); list.push({id:'scaffold', kind:'scaffold', h:.6+f*3.4, label:'Under construction', region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'}); }
   return list;
@@ -3579,9 +3724,9 @@ function quoteHTML(vid){
 function actHomax(){
   const g=presence('ximberland'); if(g) return g;
   const res=state.homes[0], ps=PARCELS.filter(pp=>pp.t==='ximberland');
-  return `<h2 class="act-h">Forest Homes</h2><p class="meta">Each parcel here comes with a Homax. Owning a home does not make you a resident by itself: you establish residence explicitly, and the resale floor protects every home.</p>
+  return `<h2 class="act-h">Forest Homes</h2><p class="meta">The first ten parcels come with a Homax; every other forest lot is a clearing where you build your own. Owning a home does not make you a resident by itself: you establish residence explicitly, and the resale floor protects every home.</p>
     ${res?`<p class="lede" style="font-size:1rem;margin:1rem 0">Your residence: Homax on parcel <a class="link" href="#/parcel/${res.parcel||'XIM-R-01'}">${res.parcel||'XIM-R-01'}</a>, since ${fmtDate(res.at)}.</p>`:''}
-    <div class="tbl" style="margin-top:1rem"><table><thead><tr><th>Parcel</th><th>Availability</th><th>Terms</th><th></th></tr></thead><tbody>${ps.map(pp=>`<tr><td><b>${pp.id}</b></td><td>${parcelBadge(pp)}</td><td>${pp.price} BuX <span class="tag tag-prov">Simulation</span></td><td><a class="link" href="#/parcel/${pp.id}">Inspect</a></td></tr>`).join('')}</tbody></table></div>`;
+    <div class="tbl" style="margin-top:1rem"><table><thead><tr><th>Parcel</th><th>Availability</th><th>Terms</th><th></th></tr></thead><tbody>${ps.filter(pp=>pp.building==='homax'||rightFor(state,pp.id)).concat(ps.filter(pp=>pp.lot&&lotState(pp)==='free'&&!rightFor(state,pp.id)).slice(0,6)).map(pp=>`<tr><td><b>${pp.id}</b></td><td>${parcelBadge(pp)}</td><td>${pp.price} BuX${pp.lot?', build your own Homax':', Homax included'} <span class="tag tag-prov">Simulation</span></td><td><a class="link" href="#/parcel/${pp.id}">Inspect</a></td></tr>`).join('')}</tbody></table></div><p class="meta" style="margin-top:.6rem">${ps.filter(pp=>pp.lot&&lotState(pp)==='free').length} forest lots are free. Choose Ximberland on the world map to see them all.</p>`;
 }
 function parcelBadge(pp){ const av=parcelAvail(pp), mine=rightFor(state,pp.id), cl=social.claims[pp.id]; if(!mine&&cl&&cl.owner&&cl.owner!==social.me) return `<span class="disc disc-2">Held by ${esc(cl.handle||'another citizen')}</span>`; return `<span class="disc ${mine?'disc-4':av==='AVAILABLE'?'disc-3':av==='LOCKED'||av==='RESTRICTED'?'':'disc-2'}">${mine?'Held by you':av}</span>`; }
 function viewParcel(id){
@@ -3592,7 +3737,7 @@ function viewParcel(id){
   if(mine){
     act+=`<h2 class="act-h">Your rights</h2><dl class="kv"><dt>Acquired</dt><dd>${fmtDate(mine.startAt)} for ${fmtAmt(mine.basis)} BuX</dd><dt>Law version</dt><dd>${mine.lawVersion}</dd></dl>`;
     if(mine.rights.includes('Residence')) act+= res?`<p class="meta" style="margin-top:1rem">This is your residential anchor.</p>`:`<div class="btn-row" style="margin-top:1rem"><button class="btn btn-gold" data-act="res-establish" data-id="${id}" ${here(pp.t)?'':'disabled'}>Establish residence here</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
-    if(mine.rights.includes('Construct: Farmstead')) act+= bld?`<p class="meta" style="margin-top:1rem">Farmstead complete. <a class="link" href="#/place/fields">Use your own plot</a>. Upgrade path: Granary (Storex), Preview.</p>`:pr?projectHTML(pr):buildPlanHTML(id);
+    if((pp.builds||[]).length) act+= bld?builtHTML(bld,pp):pr?projectHTML(pr):buildCatalogHTML(pp);
     { const used=parcelInUse(state,id), idleFrom=mine.idleSince?mine.idleSince+SIM.idle.graceDays*86400000:null;
       act+=`<dl class="kv" style="margin-top:1rem"><dt>Use</dt><dd>${used?'<b style="color:var(--cyan)">In use</b>':idleFrom&&Date.now()>=idleFrom?`<b style="color:var(--warn)">Idle</b>: pays ${fmtAmt(BigInt(mine.basis)*BigInt(SIM.idle.bpsPerDay)/10000n)} BuX a day to the ${esc(r.name)} treasury`:`Not yet used; idle fees start ${fmtDate(idleFrom||Date.now()+SIM.idle.graceDays*86400000)}`}</dd><dt>Flip fee if sold now</dt><dd>${flipFeeBps(Date.now()-mine.startAt)/100}% (falls to 0 after ${SIM.flip.zeroDays} days held)</dd></dl>`; }
     if(mine.rights.some(x=>x.startsWith('Transfer'))){ const fl=TERR[pp.t].resaleFloor?resaleFloor(pp.t,BigInt(mine.basis),Date.now()-mine.startAt):null;
@@ -3600,25 +3745,43 @@ function viewParcel(id){
         :`<div class="swap-row" style="margin-top:1.2rem"><label class="meta" for="pc-price">Asking price (BuX)${fl?`, minimum ${fmtAmt(fl)} under local law`:''}</label><input class="input" id="pc-price" inputmode="decimal"></div><button class="btn btn-quiet" data-act="parcel-list" data-id="${id}">List for sale</button>`; }
   } else if(av==='AVAILABLE'){
     act=`<h2 class="act-h">Acquire</h2><ul class="checks"><li class="${state.passport?'ok':'no'}">Passport</li><li class="${here(pp.t)?'ok':'no'}">On site in ${esc(r.name)}</li><li class="${BigInt(state.bal.bux)>=BigInt(pp.price)*UNIT?'ok':'no'}">Simulated terms: ${pp.price} BuX, paid to the ${esc(r.name)} treasury</li></ul>
-      <div class="btn-row"><button class="btn btn-gold" data-act="parcel-buy" data-id="${id}">Acquire parcel ${id}</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
+      <div class="btn-row"><button class="btn btn-gold" data-act="parcel-buy" data-id="${id}">Acquire ${landWord(pp).toLowerCase()} ${id}</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
   } else if(av==='LEASE ONLY') act=`<h2 class="act-h">Lease only</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/resort">Go to the resort lodges</a>`;
   else if(id==='XET-C-01') act=`<h2 class="act-h">Public site</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/civicsite">Go to the Civic plaza</a>`;
+  else if(lotState(pp)==='held'){ const cl=social.claims[id], o=othersOn(id);
+    act=`<h2 class="act-h">Held by ${esc(cl.handle||'another citizen')}</h2><p class="meta">${o?`Standing here: ${o.kind==='scaffold'?`a ${esc((BUILDING_DEFS[o.def]||{}).name||'building')} under construction`:`a ${esc((BUILDING_DEFS[o.kind]||{}).name||'building')}${o.cond!=null?`, condition ${o.cond}%`:''}`}.`:'Nothing has been built here yet.'} ${esc(pp.note||'')}</p>${(pp.builds||[]).length?`<p class="meta" style="margin-top:.6rem">${lotsIn(pp.t).filter(x=>lotState(x)==='free').length} lots are still free in ${esc(r.name)}. <a class="link" href="#/world" data-act="select" data-id="${pp.t}">Find one on the map</a></p>`:''}`; }
   else act=`<h2 class="act-h">${av}</h2><p class="meta">${esc(pp.note||'')}</p>`;
   return `<article class="page fade-in"><a class="back" href="#/region/${r.id}">${ICON.back} ${esc(r.name)}</a>${eventBanner(pp.t)}
     <div class="region-hero"><div><p class="dist-tag" style="--c:${pp.d?DISTRICTS[pp.d].c:'#888'}"><i></i>${pp.d?esc(DISTRICTS[pp.d].name)+', ':''}${esc(r.name)}</p>
-      <h1 class="display">Parcel ${id}</h1><p>${parcelBadge(pp)}</p>
+      <h1 class="display">${landWord(pp)} ${id}</h1><p>${parcelBadge(pp)}</p>
       <dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${pp.zoning.join(', ')}</dd><dt>Area</dt><dd>TBD</dd><dt>Territory law</dt><dd>${esc(TERR[pp.t].tax.note)}${TERR[pp.t].resaleFloor?` Resale floor: acquisition + ${TERR[pp.t].resaleFloor.deltaBuX} BuX${TERR[pp.t].hardship?', rising with time held':''}.`:''}</dd>${pp.building?`<dt>Building</dt><dd>Homax (residential)</dd>`:''}</dl>
       <div class="rights"><div><h3>Rights granted</h3><ul class="plain">${(pp.rights.length?pp.rights:['None']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><h3>Not granted</h3><ul class="plain">${(pp.excluded.length?pp.excluded:['Nothing listed']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div></div>
       <div class="mini scene" data-scene="region" data-focus="${pp.t}" data-point="${pp.at[0]},${pp.at[1]}" aria-hidden="true"></div></div>
     <section class="activity glass" id="activity">${act}<div id="law-out"></div></section>
     <p class="meta faint" style="margin-top:1rem">Simulated ownership only. No real tokenization, custody or real-estate claim.</p></article>`;
 }
-function buildPlanHTML(pid){ const D=BUILDING_DEFS.farmstead, q=BigInt(state.bal.quarx), bx=BigInt(state.bal.bux), needQ=quarxCostU(D.recipe.quarx), okQ=q>=needQ, okB=bx>=BigInt(D.recipe.bux)*UNIT;
-  return `<h2 class="act-h" style="margin-top:1.4rem">Plan a Farmstead</h2><p class="meta">${esc(D.class)}. ${esc(D.operation)} Phases: ${D.phases.join(', ')}. Resources are reserved at start and consumed at the commitment point (end of the foundation, ${D.commitPct*100}%). Before that you can cancel and get them back.</p>
-    <ul class="checks"><li class="ok">Site: your agricultural parcel</li><li class="ok">Permitted use: ${esc(D.zoning)}</li><li class="${okQ?'ok':'no'}">QuarX ${fmtAmt(needQ)} (you hold ${fmtAmt(q)})${expTag}</li><li class="${okB?'ok':'no'}">BuX ${D.recipe.bux} (you hold ${fmtAmt(bx)})${expTag}</li><li class="ok">Approval: ${esc(D.approval)}</li></ul>
-    <button class="btn btn-gold" data-act="proj-start" data-id="${pid}" ${okQ&&okB&&here('farmx')?'':'disabled'}>Reserve resources and begin</button>${here('farmx')?'':' <span class="meta">You must be in FarmX.</span>'}`; }
+function recipeOk(D){ return {q:BigInt(state.bal.quarx)>=quarxCostU(D.recipe.quarx), b:BigInt(state.bal.bux)>=BigInt(D.recipe.bux)*UNIT}; }
+function buildCatalogHTML(pp){ const r=R[pp.t], on=here(pp.t);
+  return `<h2 class="act-h" style="margin-top:1.4rem">Build on this ${landWord(pp).toLowerCase()}</h2><p class="meta">Resources are reserved when you start and consumed at the end of the foundation (${BUILDING_DEFS.farmstead.commitPct*100}%). Before that you can cancel and get them back. QuarX used to build is gone for good.</p>
+    <div class="choices bcat">${pp.builds.map(k=>{ const D=BUILDING_DEFS[k], ok=recipeOk(D);
+      return `<div class="choice glass bcard" style="--h:${D.hue}"><div class="bc-head"><span class="bicon" aria-hidden="true">${BICON[k]||''}</span><div><b>${esc(D.name)}</b><span class="meta">${esc(D.class)}</span></div></div>
+        <p class="meta">${esc(D.operation)}</p>
+        <ul class="bc-cost"><li class="${ok.q?'ok':'no'}">${fmtAmt(quarxCostU(D.recipe.quarx))} QuarX</li><li class="${ok.b?'ok':'no'}">${D.recipe.bux} BuX</li><li>${fmtSecs(D.secs)}</li></ul>
+        <button class="btn btn-gold" data-act="proj-start" data-id="${pp.id}" data-def="${k}" ${ok.q&&ok.b&&on?'':'disabled'}>Build a ${esc(D.name)}</button></div>`; }).join('')}</div>
+    ${on?'':`<p class="meta" style="margin-top:.8rem">You must be in ${esc(r.name)} to build here. <button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button></p>`}
+    ${BigInt(state.bal.quarx)<quarxCostU(2)?`<p class="meta" style="margin-top:.6rem">Short of QuarX? <a class="link" href="#/place/quarx">Mine it in Xalp</a> or <a class="link" href="#/place/forgex">trade for it at Forgex</a>.</p>`:''}`; }
+function builtHTML(b, pp){ const D=BUILDING_DEFS[b.def], ci=condInfo(b), c=ci.cond, cost=repairCost(b), last=ci.hits[ci.hits.length-1];
+  return `<h2 class="act-h" style="margin-top:1.4rem">Your ${esc(D.name)}</h2><p class="meta">${esc(D.operation)}</p>
+    <div class="cond"><span>Condition</span><i><b style="width:${c}%;background:${c>=60?'var(--cyan)':c>=30?'var(--gold)':'var(--warn)'}"></b></i><em>${Math.round(c)}%</em></div>
+    ${c<60?`<p class="meta">${c<30?'Badly damaged: it works at 30% until repaired.':'Damaged: it works at 60% until repaired.'}</p>`:''}
+    ${last?`<p class="meta">Last damage: ${esc(HAZARDS[last.type].name)}${last.source==='real'?` (real weather at ${esc(last.where||TWINS[pp.t].name)})`:''} on ${fmtDate(last.start)}, ${HAZARDS[last.type].dmg}% lost.</p>`:''}
+    <div class="btn-row" style="margin-top:.9rem">${cost.bux>0n?`<button class="btn btn-gold" data-act="repair" data-id="${pp.id}" ${here(pp.t)?'':'disabled'}>Repair for ${fmtAmt(cost.bux)} BuX${cost.quarx>0n?` and ${fmtAmt(cost.quarx)} QuarX`:''}</button>`:''}
+      ${b.def==='farmstead'?'<a class="link" href="#/place/fields">Use your own plot</a>':''}${b.def==='caravanserai'?'<a class="link" href="#/place/bazaar">Search the dunes</a>':''}</div>
+    ${cost.bux>0n&&!here(pp.t)?`<p class="meta" style="margin-top:.5rem">Repairs are made on site. <button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(R[pp.t].name)}</button></p>`:''}
+    <p class="meta faint" style="margin-top:.8rem">Buildings wear slowly and take damage from storms, floods and heavy snow in their territory. Each territory has a twin on Earth: real weather there becomes weather here.</p>`; }
+
 function projectHTML(pr){ const D=BUILDING_DEFS[pr.def], f=Math.min(1,(Date.now()-pr.start)/(pr.end-pr.start)), phase=f<D.commitPct?D.phases[0]:f<1?D.phases[1]:D.phases[2];
-  return `<h2 class="act-h" style="margin-top:1.4rem">${esc(D.name)}: ${phase}</h2>${Date.now()>=pr.end?`<button class="btn btn-gold" data-act="proj-done" data-id="${pr.id}">Complete and activate</button>`:timerBar(pr.start,pr.end,pr.committed?'Resources committed.':'Resources reserved; commitment at the end of the foundation.')}
+  return `<h2 class="act-h" style="margin-top:1.4rem">${esc(D.name)}: ${phase}</h2>${Date.now()>=pr.end?`<button class="btn btn-gold" data-act="proj-done" data-id="${pr.id}">Complete the ${esc(D.name)}</button>`:timerBar(pr.start,pr.end,pr.committed?'Resources committed.':'Resources reserved; commitment at the end of the foundation.')}
     ${!pr.committed?`<button class="link link-muted" data-act="proj-cancel" data-id="${pr.id}">Cancel before commitment and release resources</button>`:''}`; }
 function actConstruct(){
   if(state.builds.length){ const b=state.builds[0]; return `<h2 class="act-h">${esc(b.name)}</h2><p class="lede" style="font-size:1rem">Completed ${fmtDate(b.at)}. It stands in the Civic plaza and is part of the world.</p>`; }
@@ -3645,6 +3808,7 @@ function actXky(){
     <li class="pending">Construction time: very long, exact duration TBD.</li></ul>
     <p class="meta">This checklist evaluates what the canon defines today. It becomes buildable once land and the QuarX requirement are set.</p>`;
 }
+function searchCap(){ return SIM.searchDaily + (state.buildings||[]).filter(b=>b.def==='caravanserai'&&condOf(b)>=30).length; }
 function nowDay(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
 function rareToday(){ return Object.keys(state.rareBought).filter(k=>k.startsWith(String(nowDay()))).length; }
 function actResort(){
@@ -3994,10 +4158,10 @@ function rareListings(){ const d=nowDay(), out=[]; let seed=d/86400000|0;
   for(let i=0;i<SIM.rareDaily;i++){ seed=(seed*1103515245+12345)&0x7fffffff; out.push({key:d+'-'+i, name:'Golden bit #'+String(seed%9000+1000), price:60+(seed%121), seller:'Outside seller (non-Xlander)'}); } return out; }
 function actBazaar(){
   const g=presence('xahara'); if(g) return g;
-  const ls=rareListings(), s=state.search, left=SIM.searchDaily-state.searchLog.filter(t=>t>=nowDay()).length;
+  const ls=rareListings(), s=state.search, left=searchCap()-state.searchLog.filter(t=>t>=nowDay()).length;
   return `<h2 class="act-h">Rare-asset market</h2><p class="meta">${esc(TERR.xahara.tax.note)} Liquidity is thin: only ${SIM.rareDaily} listings arrive each day.${expTag}</p>
     <div class="choices">${ls.map(l=>{ const sold=state.rareBought[l.key]; return `<div class="choice glass"><b>${esc(l.name)}</b><p class="meta">${esc(l.seller)}. ${l.price} BuX.</p>${sold?'<span class="meta">Acquired</span>':`<button class="btn btn-quiet" data-act="rare-buy" data-id="${l.key}" ${BigInt(state.bal.bux)>=BigInt(l.price)*UNIT?'':'disabled'}>Buy</button>`}</div>`; }).join('')}</div>
-    <h3 style="margin:1.6rem 0 .5rem">Search the dunes</h3><p class="meta">Nomad miners seek golden bits. A search takes about ${fmtSecs(SIM.searchSecs)} and finds something about half the time. Searches left today: ${Math.max(0,left)} of ${SIM.searchDaily}.${expTag}</p>
+    <h3 style="margin:1.6rem 0 .5rem">Search the dunes</h3><p class="meta">Nomad miners seek golden bits. A search takes about ${fmtSecs(SIM.searchSecs)} and finds something about half the time. Searches left today: ${Math.max(0,left)} of ${searchCap()}.${expTag}</p>
     ${s?(Date.now()>=s.end?`<button class="btn btn-gold" data-act="search-done">See what you found</button>`:timerBar(s.start,s.end,'Searching the dunes.')):(left>0?'<button class="btn btn-primary" data-act="search-start">Begin search</button>':'')}`;
 }
 function actOracles(){
@@ -4204,7 +4368,7 @@ function selectInner(id){
   const hadFocus = stage && stage.contains(document.activeElement);
   if(stage && stage.classList.contains('flat')){ stage.innerHTML=renderMap({mode:'full', selected:ui.selected, deps:ui.deps});
     if(hadFocus && id){ const f=stage.querySelector('[data-region="'+id+'"]'); if(f) f.focus({preventScroll:true}); } }
-  else if(stage){ XW.setSelected(id); XW.flyTo(id); }
+  else if(stage){ XW.setSelected(id); XW.flyTo(id); XW.setUserObjects(userObjects()); }
   if(panel){ panel.innerHTML = id? panelDetail(R[id]) : panelList(); }
   const card=$('#scard'); if(card){ if(id){ card.innerHTML=scard(R[id]); card.hidden=false; card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); requestAnimationFrame(()=>XW.setInset(window.matchMedia('(max-width:820px)').matches?card.offsetHeight+16:0)); } else { card.hidden=true; XW.setInset(0); } }
   document.querySelectorAll('#rail button').forEach(b=>{ const on=b.dataset.id===id || (!id && b.dataset.act==='deselect'); if(on){ b.setAttribute('aria-current','true'); { const rl=b.parentElement; if(rl) rl.scrollTo({left:Math.max(0,b.offsetLeft-rl.clientWidth/2+b.offsetWidth/2),behavior:'smooth'}); }; } else b.removeAttribute('aria-current'); });
@@ -4274,8 +4438,8 @@ document.addEventListener('click', e=>{
         b.disabled=true; (async()=>{ try{ const j=await serverBE.call('POST',`/farm/start?slot=${own?'own':'field'}&kind=${id}&mult=${Math.min(1,evMod('yieldMult',1))}`), off=Date.now()-j.now;
             state[own?'plotOwn':'plot']={kind:j.kind,start:j.start+off,end:j.end+off,op:j.op,out:j.out,server:true}; save(); render(); toast(`${f.label}: started.`); }
           catch(e){ toast(e.message); render(); } })(); break; }
-      if(act==='prod-start-own'){ if(!here('farmx')||state.plotOwn||!state.buildings.some(b=>b.def==='farmstead')) return; const f=SIM.farm[id]; const t=Date.now(); state.plotOwn={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-own-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); break; }
-      { if(!here('farmx')||state.plot) return; const f=SIM.farm[id]; const t=Date.now(); state.plot={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)))}; save(); render(); toast(`${f.label}: started.`); break; }
+      if(act==='prod-start-own'){ const fs=state.buildings.find(x=>x.def==='farmstead'); if(!here('farmx')||state.plotOwn||!fs) return; const f=SIM.farm[id]; const t=Date.now(); state.plotOwn={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-own-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)*hazardMod('farmx','yieldMult',1)*condFactor(fs)))}; save(); render(); break; }
+      { if(!here('farmx')||state.plot) return; const f=SIM.farm[id]; const t=Date.now(); state.plot={kind:id,start:t,end:t+f.secs*1000,op:opId('prod-'+id),out:Math.max(1,Math.floor(f.out*evMod('yieldMult',1)*hazardMod('farmx','yieldMult',1)))}; save(); render(); toast(`${f.label}: started.`); break; }
     case 'prod-claim': case 'prod-claim-own': if((act==='prod-claim'?state.plot:state.plotOwn)&&(act==='prod-claim'?state.plot:state.plotOwn).server&&serverBE){ const own=act==='prod-claim-own', p=own?state.plotOwn:state.plot; if(Date.now()<p.end) return;
         b.disabled=true; (async()=>{ await walletReady(); let j; try{ j=await serverBE.call('POST',`/farm/claim?slot=${own?'own':'field'}`); }catch(e){ if(e.status===404){ state[own?'plotOwn':'plot']=null; save(); } toast(e.message); render(); return; }
           const first=!state.ledger.some(e=>e.op.startsWith('prod-'));
@@ -4312,7 +4476,12 @@ document.addEventListener('click', e=>{
       if(vid==='forgex' && ui.swap.dir==='sell' && ['vegiex','livestox'].includes(ui.swap.asset)){ if(demandLevel(ui.swap.asset)>=66) state.fedCity=true; demandUse(ui.swap.asset, Number(q.give[1]/UNIT)); }
       if(first) chron('FirstSwap',`First trade at ${v.name}`,reason+'.',v.region,'ordinary');
       ui.swap.op=opId('swap-'+vid); ui.swap.amount=''; save(); render(); toast('Swap settled.'); break; }
-    case 'parcel-buy': { (async()=>{ if(social.db && social.writable){ try{ const ref=social.db.doc('claims/'+id); const lease=await ref.acquire({holder:social.me, ttlMs:5000});
+    case 'parcel-buy': { (async()=>{ const refuse=m=>{ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot acquire</b><p>${esc(m)}</p></div>`; };
+      if(serverMode && serverBE){ const r0=acquireParcel(clonePlain(state),id); if(!r0.ok){ refuse(r0.why); return; } b.disabled=true;
+        try{ await walletReady(); await serverBE.call('POST','/land/buy?parcel='+encodeURIComponent(id)+'&handle='+encodeURIComponent((state.privacy||{}).name!=='private'?state.handle:'')); }
+        catch(e){ b.disabled=false; refuse(e.message||'The land office could not be reached.'); return; }
+        const r1=acquireParcel(state,id); if(r1.ok) finishParcelBuy(id); walletSync(); return; }
+      if(social.db && social.writable){ try{ const ref=social.db.doc('claims/'+id); const lease=await ref.acquire({holder:social.me, ttlMs:5000});
         if(!lease.acquired){ toast('Someone else is acquiring this parcel right now. Try again in a moment.'); return; }
         const sn=await ref.get(); const d=sn.exists?sn.data():null; if(d&&d.owner&&d.owner!==social.me){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot acquire</b><p>This parcel is already held by ${esc(d.handle||'another citizen')}.</p></div>`; return; }
         const r0=acquireParcel(clonePlain(state),id); if(!r0.ok){ const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot acquire</b><p>${esc(r0.why)}</p></div>`; return; }
@@ -4334,21 +4503,32 @@ document.addEventListener('click', e=>{
       if(!rule.ok){ if(!state.blocked.includes(rule.key)) state.blocked.push(rule.key); save(); $('#law-out').innerHTML=`<div class="lawcard"><b>Not allowed by local law</b><p>${esc(rule.law)}</p></div>`; return; }
       rt.listing={price:price.toString(), at:Date.now(), lawVersion:LAW_VERSION}; emit('PROPERTY_RIGHT_CHANGED',{parcel:id, change:'listed'}); save(); render(); toast('Listed for sale.'); break; }
     case 'parcel-unlist': { const rt=rightFor(state,id); if(rt){ delete rt.listing; save(); render(); } break; }
-    case 'proj-start': { const rt=rightFor(state,id), D=BUILDING_DEFS.farmstead; if(!rt||!rt.rights.includes('Construct: Farmstead')||!here('farmx')||state.projects.some(x=>x.parcel===id&&x.status==='active')||state.buildings.some(b=>b.parcel===id)) return;
+    case 'proj-start': { const pp=PBY[id], dk=b.dataset.def||'farmstead', D=BUILDING_DEFS[dk], rt=rightFor(state,id);
+      if(!pp||!D||!rt||!(pp.builds||[]).includes(dk)||!here(pp.t)||state.projects.some(x=>x.parcel===id&&x.status==='active')||state.buildings.some(x=>x.parcel===id)) return;
       const key='proj-'+id+'-'+Date.now().toString(36), q=quarxCostU(D.recipe.quarx), bx=BigInt(D.recipe.bux)*UNIT;
       if(BigInt(state.bal.quarx)<q){ toast('Not enough QuarX.'); return; } if(BigInt(state.bal.bux)<bx){ toast('Not enough BuX.'); return; }
-      const begin=(t,end,commitAt)=>{ lockLedger(state,key+'-lock-quarx','LOCK','quarx',q,`Reserved for a Farmstead on ${id}`,id); lockLedger(state,key+'-lock-bux','LOCK','bux',bx,`Reserved for a Farmstead on ${id}`,id);
-        state.projects.push({id:key, key, def:'farmstead', parcel:id, start:t, end, commitAt, reserved:{quarx:q.toString(), bux:bx.toString()}, committed:false, status:'active', server:serverMode});
-        emit('BUILD_RESERVED',{parcel:id}); save(); render(); toast('Resources reserved. Construction begins.'); };
-      if(serverMode){ srvBuild('/build/start?def=farmstead&parcel='+encodeURIComponent(id)+'&key='+encodeURIComponent(key)).then(j=>{ const off=Date.now()-j.now, b=j.build; begin(b.start+off, b.end+off, b.commitAt+off); }); break; }
+      const begin=(t,end,commitAt)=>{ lockLedger(state,key+'-lock-quarx','LOCK','quarx',q,`Reserved for a ${D.name} on ${id}`,id); lockLedger(state,key+'-lock-bux','LOCK','bux',bx,`Reserved for a ${D.name} on ${id}`,id);
+        state.projects.push({id:key, key, def:dk, parcel:id, start:t, end, commitAt, reserved:{quarx:q.toString(), bux:bx.toString()}, committed:false, status:'active', server:serverMode});
+        emit('BUILD_RESERVED',{parcel:id, def:dk}); save(); render(); publishCitizen(); toast(`Resources reserved. Your ${D.name} is going up.`); };
+      if(serverMode){ b.disabled=true; srvBuild('/build/start?def='+dk+'&parcel='+encodeURIComponent(id)+'&key='+encodeURIComponent(key)).then(j=>{ const off=Date.now()-j.now, x=j.build; begin(x.start+off, x.end+off, x.commitAt+off); }).catch(()=>render()); break; }
       const t=Date.now(); begin(t, t+D.secs*1000, t+D.secs*1000*D.commitPct); break; }
     case 'proj-cancel': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.committed||pr.status!=='active') return;
-      const release=()=>{ Object.entries(pr.reserved).forEach(([a,q])=>lockLedger(state,pr.key+'-unlock-'+a,'UNLOCK',a,BigInt(q),`Released: Farmstead on ${pr.parcel} cancelled before commitment`,pr.parcel)); pr.status='released'; emit('BUILD_FAILED',{parcel:pr.parcel}); save(); render(); toast('Construction cancelled. Resources released.'); };
+      const release=()=>{ Object.entries(pr.reserved).forEach(([a,q])=>lockLedger(state,pr.key+'-unlock-'+a,'UNLOCK',a,BigInt(q),`Released: ${BUILDING_DEFS[pr.def].name} on ${pr.parcel} cancelled before commitment`,pr.parcel)); pr.status='released'; emit('BUILD_FAILED',{parcel:pr.parcel}); save(); render(); toast('Construction cancelled. Resources released.'); };
       if(pr.server){ srvBuild('/build/cancel?key='+encodeURIComponent(pr.key)).then(release); break; } release(); break; }
-    case 'proj-done': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.status!=='active'||Date.now()<pr.end) return;
-      const finish=()=>{ projectCommit(state,pr); pr.status='complete'; state.buildings.push({id:'bld-'+pr.parcel, def:pr.def, parcel:pr.parcel, at:Date.now(), version:BUILDING_DEFS[pr.def].version});
-        emit('BUILD_COMPLETED',{parcel:pr.parcel}); chron('BuildingCompleted',`Farmstead raised on ${pr.parcel}`,'A new productive building stands in FarmX. It opens your own plot at the fields.','farmx','notable'); save(); render(); toast('Farmstead complete. Your own plot is open.'); };
+    case 'proj-done': { const pr=state.projects.find(x=>x.id===id); if(!pr||pr.status!=='active'||Date.now()<pr.end) return; const D=BUILDING_DEFS[pr.def], pp=PBY[pr.parcel];
+      const finish=()=>{ projectCommit(state,pr); pr.status='complete'; state.buildings.push({id:'bld-'+pr.parcel, def:pr.def, parcel:pr.parcel, at:Date.now(), version:D.version, key:pr.key});
+        if(pr.def==='homax'){ const rt=rightFor(state,pr.parcel); if(rt && !rt.rights.includes('Residence')) rt.rights=rt.rights.concat(['Residence']); }
+        emit('BUILD_COMPLETED',{parcel:pr.parcel, def:pr.def}); chron('BuildingCompleted',`${D.name} raised on ${pr.parcel}`,`${D.operation} It stands on the map of ${R[pp.t].name} for every citizen to see.`,pp.t,'notable');
+        save(); render(); publishCitizen(); toast(pr.def==='homax'?'Homax complete. You can establish residence in it.':`${D.name} complete.`); };
       if(pr.server){ srvBuild('/build/done?key='+encodeURIComponent(pr.key)).then(()=>{ pr.commitAt=Math.min(pr.commitAt,Date.now()); finish(); }); break; } finish(); break; }
+    case 'repair': { const pp=PBY[id], bd=buildingOn(id); if(!pp||!bd||!here(pp.t)) return; const cost=repairCost(bd), D=BUILDING_DEFS[bd.def]; if(cost.bux===0n) return;
+      const done=paid=>{ bd.repairedAt=Date.now(); if(bd.srv) bd.srv={cond:100, hits:[], repair:{bux:'0', quarx:'0'}, at:Date.now()};
+        emit('BUILDING_REPAIRED',{parcel:id}); chron('BuildingRepaired',`${D.name} repaired on ${id}`,`Restored to full condition for ${fmtAmt(paid.bux)} BuX${paid.quarx>0n?` and ${fmtAmt(paid.quarx)} QuarX`:''}.`,pp.t,'ordinary'); save(); render(); publishCitizen(); toast('Repaired. It works at full strength again.'); };
+      const local=(op,paid)=>{ const lines=[['bux',-paid.bux,'treasury:'+pp.t]]; if(paid.quarx>0n) lines.push(['quarx',-paid.quarx,'burn']); return postLedger(state,op,lines,`Repair of the ${D.name} on ${id}`,id); };
+      if(serverMode && serverBE){ if(!bd.key){ toast('The build site has not synced yet. Try again in a moment.'); syncBuilds(); return; } b.disabled=true;
+        serverBE.call('POST','/build/repair?key='+encodeURIComponent(bd.key)).then(j=>{ if(!j.repaired){ syncBuilds(); render(); return; } const paid={bux:BigInt(j.paid.bux), quarx:BigInt(j.paid.quarx)}; local('repair-'+bd.key+'-'+j.now.toString(36),paid); done(paid); walletSync(); }).catch(e=>{ toast(e.message); render(); }); break; }
+      if(!local(opId('repair-'+id),cost)){ toast('Not enough BuX or QuarX for the repair.'); return; } done(cost); break; }
+
     case 'homax-buy': { if(!here('ximberland')||state.homes.length) return; const price=BigInt(SIM.homaxPrice)*UNIT;
       if(!postLedger(state,'homax-acquire',[['bux',-price]],'Homax acquired in Ximberland','homax')){ toast('Not enough BuX.'); return; }
       state.homes.push({id:'homax-1', region:'ximberland', basis:price.toString(), at:Date.now()}); state.identity='resident';
@@ -4463,7 +4643,7 @@ document.addEventListener('click', e=>{
       state.rareBought[id]=1; state.items.push({id:'it-rare-'+id, name:l.name, from:'Outside seller', src:'rare:'+id, basis:String(BigInt(l.price)*UNIT), at:Date.now()});
       if(state.items.length===1) chron('RareAsset','First rare asset from Xahara',`You bought ${l.name} from an outside seller at the bazaar.`,'xahara','notable');
       save(); render(); toast(`Acquired ${l.name}.`); break; }
-    case 'search-start': { if(!here('xahara')||state.search) return; const t=Date.now(); state.search={start:t,end:t+SIM.searchSecs*1000,op:opId('search')}; state.searchLog.push(t); save(); render(); break; }
+    case 'search-start': { if(!here('xahara')||state.search||state.searchLog.filter(t=>t>=nowDay()).length>=searchCap()) return; const t=Date.now(); state.search={start:t,end:t+SIM.searchSecs*1000,op:opId('search')}; state.searchLog.push(t); save(); render(); break; }
     case 'search-done': { const s0=state.search; if(!s0||Date.now()<s0.end) return; state.search=null;
       if(Math.random()*100<SIM.searchChancePct){ const name='Golden bit #'+(1000+Math.floor(Math.random()*9000)); state.items.push({name, from:'Found in the dunes', basis:'0', at:Date.now()}); toast(`You found ${name}.`);
         if(state.items.length===1) chron('RareAsset','First golden bit found',`Searching the Xahara dunes, you found ${name}.`,'xahara','notable'); }
@@ -4471,6 +4651,11 @@ document.addEventListener('click', e=>{
       save(); render(); break; }
     case 'em-apply': state.emergency={feature:'farmxswap', reason:'Security drill: venue temporarily disabled under operational policy', actor:'World Architect (prototype)', at:Date.now()}; emit('EMERGENCY_ACTION_APPLIED',{feature:'farmxswap'}); save(); render(); break;
     case 'em-end': state.emergency=null; emit('EMERGENCY_ACTION_ENDED',{feature:'farmxswap'}); save(); render(); break;
+    case 'hz-start': { const t=(($('#hz-terr')||{}).value)||'farmx';
+      if(serverMode){ if(!social.isOwner) return; serverBE.call('POST','/hazard/raise?type='+id+'&t='+t+'&hours=3').then(j=>{ toast(`${HAZARDS[id].name} ${j.extended?'extended':'raised'} in ${R[t].name} for every citizen.`); refreshWorld().then(()=>render()); }).catch(e=>toast(e.message)); break; }
+      const n=Date.now(); state.hazards=(state.hazards||[]).filter(h=>h.end>n).concat([{id:'lab-'+id+'-'+t+'-'+n.toString(36), type:id, territory:t, start:n, end:n+3*3600000, source:'lab', where:TWINS[t].name}]); damageNotices(); save(); render(); toast(`${HAZARDS[id].name} raised in ${R[t].name}.`); break; }
+    case 'hz-clear': state.hazards=[]; save(); render(); break;
+    case 'wx-refresh': { if(!serverMode||!social.isOwner) return; b.disabled=true; serverBE.call('POST','/world/refresh').then(j=>{ toast(j.raised&&j.raised.length?`Weather read. New hazards: ${j.raised.map(e=>HAZARDS[e.type].name+' in '+R[e.territory].name).join(', ')}.`:'Weather read. No severe weather at any twin right now.'); refreshWorld().then(()=>render()); }).catch(e=>{ toast(e.message||'Could not reach the weather bridge.'); render(); }); break; }
     case 'ev-start': startEvent(id,state,0); save(); render(); toast(`World event: ${WEVENTS[id].name}`); break;
     case 'ev-clear': state.worldEvents=state.worldEvents.filter(e=>e.id!==id); save(); render(); break;
     case 'm-accept': { const m=MBY[id]; if(!m||missionState(m)!=='AVAILABLE') return; if(MISSIONS.filter(x=>state.mstate[x.id]==='active').length>=MAX_ACTIVE){ toast(`You can follow up to ${MAX_ACTIVE} missions at once. Finish one first.`); return; }
@@ -4554,7 +4739,7 @@ setInterval(()=>{
     const o=state[k]; if(o && Date.now()>=o.end && !state.notified[o.op]){ state.notified[o.op]=1; toast(msg); } });
 },1000);
 /* Test hook for the local test scripts only (test/*.cjs); absent on xland.world. */
-if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT, XW,
+if(location.hostname==='localhost') window.__xl={ get state(){ return state; }, postLedger, save, fmtAmt, reconcile, social, UNIT, XW, PLACES, PARCELS, R, REGIONS,
   // gives this citizen produce (vegiex, livestox) or QuarX on the local test server, as if harvested or mined
   async devCredit(asset, whole){ const op=(asset==='quarx'?'mine-dev-':'prod-dev-')+Date.now().toString(36)+Math.random().toString(36).slice(2,5), units=BigInt(whole)*UNIT;
     await serverBE.call('POST',`/dev/credit?asset=${asset}&units=${units}&op=${op}`); postLedger(state,op,[[asset,units]],'Test credit','test'); save(); return op; } };

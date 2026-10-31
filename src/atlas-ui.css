@@ -280,3 +280,34 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 /* ===== r52 Server wallet status ===== */
 .wallet-status{display:flex;align-items:center;gap:.7rem;padding:.7rem 1rem;margin:0 0 1.2rem}
 .wallet-status svg{width:28px;height:28px;flex:none}
+
+/* ===== r55: the living map: building catalog, condition, twins on Earth, hazards ===== */
+.bcat{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.bcard{gap:.6rem}
+.bc-head{display:flex;align-items:center;gap:.7rem}
+.bc-head b{display:block;font-family:var(--font-display);font-size:1.2rem;font-weight:650}
+.bicon{width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:50%;color:#F7E6BF;background:radial-gradient(circle at 34% 28%,hsl(var(--h,30) 45% 34%),hsl(var(--h,30) 50% 14%));box-shadow:inset 0 0 0 1.2px var(--gold)}
+.bicon svg{width:22px;height:22px}
+.bicon.sm{width:26px;height:26px;display:inline-grid;vertical-align:middle;margin-right:.1rem}
+.bicon.sm svg{width:15px;height:15px}
+:root[data-theme="light"] .bicon{border-radius:12px;background:hsl(var(--h,30) 92% 93%);color:hsl(var(--h,30) 70% 36%);box-shadow:none}
+:root[data-theme="light"] .bicon.sm{border-radius:8px}
+.dep-list li:has(.bicon){grid-template-columns:30px 1fr;align-items:center}
+.bc-cost{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem;font-size:.92rem;font-weight:600;font-variant-numeric:tabular-nums}
+.bc-cost li{display:flex;align-items:center;gap:.3rem}
+.bc-cost .res-ic{width:18px;height:18px}
+.bc-cost li.no{color:var(--warn)}
+.cond{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.8rem;margin:1rem 0 .4rem;max-width:460px;font-size:.95rem}
+.cond i{height:10px;border-radius:5px;background:color-mix(in srgb,var(--text) 12%,transparent);overflow:hidden}
+.cond i b{display:block;height:100%;border-radius:5px}
+.cond em{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+.twin{display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem}
+.twin svg{width:16px;height:16px;flex:none;margin-top:.2rem;color:var(--gold)}
+:root[data-theme="light"] .twin svg{color:var(--gold)}
+.land-sum p{font-size:.95rem;line-height:1.5}
+.land-sum b{color:var(--gold)}
+:root[data-theme="light"] .land-sum b{color:var(--gold)}
+.hz-lab{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+.hz-lab .input{max-width:340px}
+.ev-banner .hz{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.world-events .ev-banner .hz{background:rgba(40,16,10,.86)}

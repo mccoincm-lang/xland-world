@@ -130,9 +130,13 @@ const credit = (k, asset, units, op) => api(k, "POST", `/dev/credit?asset=${asse
   await sleep(10500);
   r = await api(A, "PUT", "/doc?c=claims&id=AQX-01", { data: { owner: uidA } }); check("The House on the River can never be claimed", r.status === 403, err(r));
   r = await api(A, "PUT", "/doc?c=claims&id=XTL-01", { data: { owner: uidA } }); check("Locked reserves cannot be claimed", r.status === 403, err(r));
-  r = await api(A, "PUT", `/doc?c=claims&id=XIM-T-${R}`, { data: { owner: uidS } }); check("A claim must name its own holder", r.status === 403, err(r));
-  r = await api(A, "PUT", `/doc?c=claims&id=XIM-T-${R}`, { data: { owner: uidA } }); const r5 = await api(S, "PUT", `/doc?c=claims&id=XIM-T-${R}`, { data: { owner: uidS } });
-  check("A held parcel cannot be taken over", r.status === 200 && r5.status === 409, err(r5));
+  const lot = require("../src/world.json").land.filter(l => l.lot && l.t === "ximberland")[Number.parseInt(R, 36) % 70].id;
+  r = await api(A, "PUT", `/doc?c=claims&id=${lot}`, { data: { owner: uidS } }); check("A claim must name its own holder", r.status === 403, err(r));
+  r = await api(A, "PUT", `/doc?c=claims&id=${lot}`, { data: { owner: uidA } }); check("Land cannot be claimed without paying (r55)", r.status === 403, err(r));
+  r = await api(A, "POST", "/ledger", { op: "parcel-" + lot, kind: "post", lines: [["bux", "-1"]] }); check("A page cannot pay itself into land with a one-unit parcel op", r.status === 422, err(r));
+  r = await api(A, "POST", "/ledger", { op: "homax-acquire", kind: "post", lines: [["bux", "-1"]] }); check("A Homax counts only at its full price", r.status === 422, err(r));
+  r = await api(A, "POST", "/land/buy?parcel=" + lot); const r5 = await api(S, "POST", "/land/buy?parcel=" + lot), r6 = await api(S, "PUT", `/doc?c=claims&id=${lot}`, { data: { owner: uidS } });
+  check("A held parcel cannot be taken over", (r.status === 200 || r.status === 409) && r5.status === 409 && r6.status === 403, [err(r), err(r5), err(r6)].join(" / "));
   r = await api(A, "PUT", "/doc?c=citizens&id=" + uidS, { data: { handle: "pwned" } }); check("Cannot rewrite another citizen's document", r.status === 403, err(r));
   r = await api(A, "PUT", "/doc?c=state&id=" + uidA, { data: { big: "x".repeat(1024 * 1024 + 10) } }); check("Oversized document refused", r.status === 413, err(r));
   r = await api(A, "POST", "/quarx/claim"); check("Claiming a seam that was never started refused", r.status === 404, err(r));
