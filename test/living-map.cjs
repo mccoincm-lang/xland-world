@@ -80,6 +80,34 @@ const world = require("../src/world.json"), LAND = Object.fromEntries(world.land
   check("A heatwave in FarmX lowers a harvest started there (12 → 8)", r.status === 200 && r.body.out === 8, err(r) + " out=" + r.body.out);
   r = await api(A, "POST", "/ledger", { op: "repair-free-" + Date.now(), kind: "post", lines: [["bux", "100000"]] }); check("A page cannot credit itself a repair", r.status === 422, err(r));
 
+  // --- Land between citizens (r56) ---
+  const C = newKey("C"); await api(C, "GET", "/me");
+  r = await api(A, "POST", "/land/list?parcel=AQX-01&price=900"); check("The House on the River can never be listed", r.status === 404, err(r));
+  r = await api(Bk, "POST", `/land/list?parcel=${xah}&price=500`); check("Only the holder can list land", r.status === 403, err(r));
+  r = await api(A, "POST", `/land/list?parcel=${xah}&price=12.5`); check("An asking price is in whole BuX", r.status === 400, err(r));
+  r = await api(A, "POST", `/land/list?parcel=${xah}&price=500`); check("The holder lists a lot with its caravanserai", r.status === 200 && r.body.listing.feeBps === 2000, err(r) + " fee " + (r.body.listing || {}).feeBps);
+  check("Listings are public in the world report", (await api(C, "GET", "/world")).body.living.listings.some(l => l.id === xah && l.price === 500));
+  r = await api(A, "POST", `/land/list?parcel=${f1}&price=900`); const r2 = await api(A, "POST", `/build/start?def=farmstead&parcel=${f1}&key=proj-${f1}-f9`);
+  check("Nothing is built on land while it is listed", r.status === 200 && r2.status === 409 && /listed/.test(err(r2)), err(r2));
+  r = await api(A, "POST", `/land/unlist?parcel=${f1}`); check("The holder withdraws a listing", r.status === 200 && !(await api(C, "GET", "/world")).body.living.listings.some(l => l.id === f1));
+  r = await api(Bk, "POST", `/land/buy?parcel=${xah}&price=450`); check("A buyer is protected from a changed price", r.status === 409 && /changed/.test(err(r)), err(r));
+  r = await api(C, "POST", `/land/buy?parcel=${xah}&price=500`); check("A buyer without BuX is refused and the listing stays", r.status === 409 && (await api(C, "GET", "/world")).body.living.listings.some(l => l.id === xah), err(r));
+  const a0 = BigInt((await wallet(A)).bal.bux), b0 = BigInt((await wallet(Bk)).bal.bux);
+  r = await api(Bk, "POST", `/land/buy?parcel=${xah}&price=500&handle=Bea`);
+  const a1 = BigInt((await wallet(A)).bal.bux), b1 = BigInt((await wallet(Bk)).bal.bux);
+  check("The buyer pays the asking price in one step", r.status === 200 && b0 - b1 === 5000000n && r.body.resale && r.body.resale.price === 500, err(r) + " " + (b0 - b1));
+  check("The seller is paid less the 20% anti-flip fee", a1 - a0 === 4000000n, String(a1 - a0));
+  check("The caravanserai changes hands with the land", r.body.builds.some(x => x.key === key) && (await api(Bk, "GET", "/builds")).body.builds.some(x => x.key === key && x.cond != null) && !(await api(A, "GET", "/builds")).body.builds.some(x => x.key === key));
+  const holder = (await api(C, "GET", "/sync?since=0")).body.docs.find(d => d.c === "claims" && d.id === xah);
+  check("The shared registry shows the new holder", holder && holder.d && holder.d.handle === "Bea", JSON.stringify(holder && holder.d));
+  r = await api(C, "POST", `/land/buy?parcel=${xah}&price=500`); check("Sold land cannot be sold twice", r.status === 409, err(r));
+  r = await api(A, "PUT", `/doc?c=claims&id=${xah}`, { data: { owner: uidA } }); check("The seller cannot take the land back with a claim", r.status >= 400, err(r));
+  r = await api(A, "POST", `/build/repair?key=${key}`); check("The seller can no longer repair what was sold", r.status === 404, err(r));
+  await api(A, "POST", "/land/buy?parcel=" + xim); const ximPrice = LAND[xim].price;
+  r = await api(A, "POST", `/land/list?parcel=${xim}&price=${ximPrice}`); check("Ximberland's resale floor: never below acquisition + 1 BuX", r.status === 409 && /never resold/.test(err(r)), err(r));
+  r = await api(A, "POST", `/land/list?parcel=${xim}&price=${ximPrice + 1}`); check("At the floor the listing is accepted", r.status === 200, err(r));
+  r = await api(A, "POST", "/ledger", { op: "land-sale-fake-" + Date.now(), kind: "post", lines: [["bux", "100000"]] }); check("A page cannot pay itself for a land sale", r.status === 422, err(r));
+
   console.log(`\n${pass} passed, ${failN} failed`);
   process.exit(failN ? 1 : 0);
 })();

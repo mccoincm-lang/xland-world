@@ -1638,7 +1638,18 @@ PARCELS.filter(p=>(p.builds||[]).length).forEach(p=>{ const K=LOT_KIND[p.t]||{},
   if(p.builds.includes('homax')) p.excluded=p.excluded.filter(x=>!/^Residence|^Construct/.test(x)); else p.excluded=p.excluded.filter(x=>!/^Construct/.test(x)); });
 const lotsIn = t => PARCELS.filter(pp=>pp.t===t && (pp.builds||[]).length);
 const landWord = pp => pp.lot?'Lot':'Parcel';
-function lotState(pp){ if(rightFor(state,pp.id)) return 'mine'; const cl=social.claims[pp.id]; if(cl&&cl.owner&&cl.owner!==social.me) return 'held'; return parcelAvail(pp)==='AVAILABLE'?'free':'closed'; }
+function lotState(pp){ if(rightFor(state,pp.id)) return 'mine'; const cl=social.claims[pp.id]; if(cl&&cl.owner&&cl.owner!==social.me) return listingOf(pp.id)?'listed':'held'; return parcelAvail(pp)==='AVAILABLE'?'free':'closed'; }
+/* Land between citizens (r56): asking prices are held by the server (/api/land/list) and read from the world report. */
+function listingOf(pid){ const ls=serverMode&&world&&world.living&&world.living.listings; if(!ls) return null; const l=ls.find(x=>x.id===pid); if(!l) return null; const cl=social.claims[pid]; return cl&&cl.owner===l.seller?l:null; }
+/* A right this page still shows as active while the shared registry names someone else: the land changed hands. */
+function detectSales(){ if(!serverMode||!state.passport) return false; let ch=false;
+  (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const cl=social.claims[r.parcel]; if(!cl||!cl.owner||cl.owner===social.me) return; const pp=PBY[r.parcel]; if(!pp) return;
+    r.status='transferred'; r.endAt=Date.now(); delete r.listing; ch=true;
+    const gone=(state.buildings||[]).filter(b=>b.parcel===r.parcel); state.buildings=(state.buildings||[]).filter(b=>b.parcel!==r.parcel); state.homes=(state.homes||[]).filter(h=>h.parcel!==r.parcel);
+    emit('PROPERTY_RIGHT_CHANGED',{parcel:r.parcel, change:'transferred'});
+    chron('PropertySold',`${landWord(pp)} ${r.parcel} sold to ${cl.handle||'another citizen'}`,`${gone.length?`The ${gone.map(b=>BUILDING_DEFS[b.def].name).join(' and ')} on it went with the land. `:''}The price, less any anti-flip fee, was paid into your wallet by the land office.`,pp.t,'notable');
+    toast(`${landWord(pp)} ${r.parcel} was sold to ${cl.handle||'another citizen'}.`); });
+  return ch; }
 function othersOn(pid){ for(const c of social.citizens){ if(c.id===social.me) continue; const st=(c.structures||[]).find(x=>x&&x.parcel===pid&&x.kind!=='parcel'); if(st) return st; } return null; }
 function buildingOn(pid){ return (state.buildings||[]).find(b=>b.parcel===pid); }
 function heldLotsIn(st, t){ return (st.rights||[]).filter(r=>r.status==='active'&&r.territory===t&&PBY[r.parcel]&&PBY[r.parcel].lot).length; }
@@ -1675,8 +1686,8 @@ function hazardBanner(t){ const hs=liveHazards().filter(h=>!t||h.territory===t);
 function twinLine(t){ const tw=TWINS[t]; if(!tw) return ''; const w=serverMode&&world&&world.living&&world.living.weather?world.living.weather[t]:null;
   return `<p class="twin meta">${ICON.world}<span>Twin on Earth: <b>${esc(tw.name)}</b>${w?`, now ${Math.round(w.temp)}°C, wind ${Math.round(w.wind)} km/h${w.gust?`, gusts ${Math.round(w.gust)}`:''}`:''}</span></p>`; }
 function landSummary(t){ const ls=lotsIn(t); if(!ls.length) return '';
-  const st=ls.map(lotState), free=st.filter(x=>x==='free').length, mine=st.filter(x=>x==='mine').length, held=st.filter(x=>x==='held').length;
-  return `<div class="panel-section land-sum"><h3>Land</h3><p><b>${free}</b> of ${ls.length} lots free${mine?`, <b>${mine}</b> yours`:''}${held?`, ${held} held by others`:''}. Zoom in and tap a marked lot on the map to see it.</p></div>`; }
+  const st=ls.map(lotState), free=st.filter(x=>x==='free').length, mine=st.filter(x=>x==='mine').length, held=st.filter(x=>x==='held'||x==='listed').length, listed=st.filter(x=>x==='listed').length;
+  return `<div class="panel-section land-sum"><h3>Land</h3><p><b>${free}</b> of ${ls.length} lots free${mine?`, <b>${mine}</b> yours`:''}${held?`, ${held} held by others`:''}${listed?` (<b>${listed}</b> offered for sale)`:''}. Zoom in and tap a marked lot on the map to see it.</p></div>`; }
 const BICON = {
   homax:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" fill="currentColor"/></svg>',
   farmstead:'<svg viewBox="0 0 24 24"><path d="M2.5 21V11l7-5 7 5v10Z" fill="currentColor"/><rect x="17.5" y="7" width="4" height="14" rx="2" fill="currentColor" opacity=".75"/></svg>',
@@ -1840,7 +1851,7 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
    The server applies only valid operations. When the outbox is empty and the page has mirrored everything the server
    did (seams, harvests, market settlements), the page aligns its balances with the server's, recording any difference
    as an adjustment so the ledger still adds up. */
-const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-','parcel-','repair-'];   // r55: land is bought through /api/land/buy and repairs through /api/build/repair   // r53: build sites are reserved, committed and released by the server
+const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-','parcel-','repair-','land-'];   // r55: land is bought through /api/land/buy and repairs through /api/build/repair   // r53: build sites are reserved, committed and released by the server
 /* Construction timed by the server (r53): the page asks the server first and only then mirrors the reservation locally. */
 async function srvBuild(path){ try{ return await serverBE.call('POST',path); }catch(e){ toast(e.message||'The build site could not be reached.'); throw e; } }
 function outboxPush(body){ if(!state.passport || SERVER_CREDITED.some(p=>body.op.startsWith(p))) return; state.outbox=state.outbox||[]; state.outbox.push(body); clearTimeout(outboxPush.t); outboxPush.t=setTimeout(()=>walletSync(), 1200); }
@@ -1914,7 +1925,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r55';
+const BUILD = 'r56';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -1940,7 +1951,7 @@ async function socialInit(db, uid, u){
   else { govSync(); setInterval(()=>{ if(document.visibilityState!=='hidden') govSync(); }, 15000); }
   db.collection('shops').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.shops=m; socialChanged(); }, err);
   if(serverMode) serverBE.call('GET','/coops').then(k=>{ market.coops=k.coops||{}; socialChanged(); }).catch(()=>{});
-  db.collection('claims').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.claims=m; socialChanged(); backfillClaims(); }, err);
+  db.collection('claims').onSnapshot(sn=>{ const m={}; sn.docs.filter(d=>d.exists).forEach(d=>{ m[d.id]=clonePlain(d.data()); }); social.claims=m; if(detectSales()){ save(); walletSync(); } socialChanged(); backfillClaims(); }, err);
   publishCitizen(); publishProgress(); publishShop(); setInterval(()=>{ publishCitizen(); publishProgress(); }, 120000);
   if(serverMode){ marketSync(); setInterval(()=>{ if(marketWanted()) marketSync(); }, 15000); }
   if(social.isOwner){ db.collection('progress').onSnapshot(sn=>{ social.progress=sn.docs.filter(d=>d.exists).map(d=>Object.assign({id:d.id},clonePlain(d.data()))); if(parse().route==='founder') render(); }, err);
@@ -2771,7 +2782,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   function buildUserLabels(lay){
     for(const k in placeEls) if(k.startsWith('u-')){ placeEls[k].remove(); delete placeEls[k]; }
     userList.forEach(u=>{ if(mode==='region' && (u.region!==focus || (u.lot && u.kind==='forsale'))) return;
-      const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'?'plot sale':u.kind==='held'?'plot held':u.kind==='shop'?'plot shop':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.dataset.region=u.region||''; el.innerHTML=`<i></i>${esc(u.label)}`;
+      const el=document.createElement(mode==='world'?'button':'div'); el.className='pl '+(u.kind==='forsale'||u.sale?'plot sale':u.kind==='held'?'plot held':u.kind==='shop'?'plot shop':'mine')+' hide'; el.dataset.place=u.place||''; el.dataset.parcel=u.parcel||''; el.dataset.region=u.region||''; el.innerHTML=`<i></i>${esc(u.label)}`;
       if(mode==='world'){ el.type='button'; el.setAttribute('aria-label',u.label); } lay.insertBefore(el, lay.firstChild); placeEls['u-'+u.id]=el; }); }
   function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
     const base=r.people||(id==='aquax'?'Water areas':'Locked reserve'); sp.textContent=regionNotes[id]?`${base} · ${regionNotes[id]}`:base; } }
@@ -3092,12 +3103,13 @@ function panelPlace(q){
 }
 function parcelStanding(pp){ const av=parcelAvail(pp), mine=rightFor(state,pp.id), cl=social.claims[pp.id];
   if(mine) return {cls:'mine', text:'Yours'};
-  if(cl&&cl.owner&&cl.owner!==social.me) return {cls:'held', text:`Held by ${cl.handle||'another citizen'}`};
+  if(cl&&cl.owner&&cl.owner!==social.me){ const ls=listingOf(pp.id); return ls?{cls:'sale', text:`${cl.handle||'A citizen'} sells · ${ls.price} BuX`}:{cls:'held', text:`Held by ${cl.handle||'another citizen'}`}; }
   if(av==='AVAILABLE') return {cls:'sale', text:`For sale · ${pp.price} BuX`};
   return {cls:'closed', text:av.charAt(0)+av.slice(1).toLowerCase()}; }
 function parcelActions(pp){ const st=parcelStanding(pp), here=state.currentRegion===pp.t, r=R[pp.t];
   if(st.cls==='mine') return `<a class="btn btn-primary" href="#/parcel/${pp.id}">Manage your land</a>`;
   if(st.cls!=='sale') return `<a class="link" href="#/parcel/${pp.id}">Open the registry entry</a>`;
+  if(listingOf(pp.id)) return `<a class="btn btn-gold" href="#/parcel/${pp.id}">See what is for sale</a>`;
   if(!state.passport) return `<a class="btn btn-primary" href="#/hotex">Get a passport to buy land</a>`;
   if(!here) return `<button class="btn btn-primary" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button><span class="meta">Land is bought on site.</span>`;
   return `<a class="btn btn-gold" href="#/parcel/${pp.id}">Review the deed and buy</a>`; }
@@ -3340,7 +3352,7 @@ function runSelfTests(){
     const c1=condOf(b,c), old=state.hazards; state.hazards=c.hazards; const cost=repairCost(b); state.hazards=old;
     return Math.round(c1)===80 && cost.bux===BigInt(Math.ceil(20/100*(120+2*SIM.rates.quarx)*.6))*UNIT && cost.quarx===0n && repairCost({def:'homax', parcel:b.parcel, at:n}).bux===0n; });
   t('A heatwave lowers harvests only in its own territory', ()=>{ if(serverMode) return true; const old=state.hazards; state.hazards=[{id:'h', type:'heat', territory:'farmx', start:Date.now()-1, end:Date.now()+60000}]; const a=hazardMod('farmx','yieldMult',1), b=hazardMod('xalp','yieldMult',1); state.hazards=old; return a===.7 && b===1; });
-  t('Land and repairs are settled by the server, never pushed by the page', ()=>['parcel-','repair-'].every(p=>SERVER_CREDITED.includes(p)));
+  t('Land, resales and repairs are settled by the server, never pushed by the page', ()=>['parcel-','repair-','land-'].every(p=>SERVER_CREDITED.includes(p)));
   t('Your wallet reconciles with the ledger', ()=>reconcile(state));
   return T;
 }
@@ -3550,7 +3562,7 @@ function viewFounder(){
     <dl class="kv"><dt>Testers</dt><dd>${n}</dd><dt>Active in the last day</dt><dd>${active}</dd><dt>Feedback</dt><dd>${F.length}${F.some(f=>f.rating)?` · average rating ${avg.toFixed(1)} of 5`:''}</dd></dl>
     ${serverMode?`<h2 class="display eh">The world</h2><div class="econ-world-grid">${worldMiningHTML()}${worldReserveHTML()}${worldMarketHTML()}</div>`:''}
     ${serverMode?founderWalletsHTML():''}
-    ${serverMode?`<div class="gov-box glass" style="margin-top:1.2rem"><b>Real-weather bridge</b><p class="meta" style="margin:.4rem 0 .8rem">Every hour the Worker reads the weather at each territory's twin on Earth and turns storms, floods, heavy snow and heat into hazards. ${world&&world.living&&world.living.weatherAt?`Last reading ${new Date(world.living.weatherAt).toLocaleString()}.`:'No reading yet: the hourly trigger in wrangler.toml starts with the next deploy, or read now.'} ${world&&world.living?`${world.living.landSold} parcels and lots sold so far.`:''}</p><button class="btn btn-quiet" data-act="wx-refresh">Read the real weather now</button></div>`:''}
+    ${serverMode?`<div class="gov-box glass" style="margin-top:1.2rem"><b>Real-weather bridge</b><p class="meta" style="margin:.4rem 0 .8rem">Every hour the Worker reads the weather at each territory's twin on Earth and turns storms, floods, heavy snow and heat into hazards. ${world&&world.living&&world.living.weatherAt?`Last reading ${new Date(world.living.weatherAt).toLocaleString()}.`:'No reading yet: the hourly trigger in wrangler.toml starts with the next deploy, or read now.'} ${world&&world.living?`${world.living.landSold} parcels and lots sold by the land office, ${world.living.landResold||0} resold between citizens (${fmtAmt(BigInt(world.living.landFees||0))} BuX in anti-flip fees to the territories).`:''}</p><button class="btn btn-quiet" data-act="wx-refresh">Read the real weather now</button></div>`:''}
     <h2 class="display eh">Journey funnel</h2><div class="funnel">${FUNNEL.map(([k,l])=>{ const c=P.filter(x=>x.milestones&&x.milestones[k]).length, pct=n?Math.round(c/n*100):0; return `<div class="fn-row"><span>${l}</span><i><b style="width:${pct}%"></b></i><em>${c} · ${pct}%</em></div>`; }).join('')}</div>
     <h2 class="display eh">Feedback</h2>${F.length?`<ol class="ppx">${F.slice(0,60).map(f=>`<li><div class="ppx-h"><b dir="auto">${esc(f.handle||'A tester')}</b>${f.rating?`<span class="meta">${'◆'.repeat(f.rating)}${'◇'.repeat(5-f.rating)}</span>`:''}<span class="meta">${esc(f.route)} · ${esc(f.identity||'')} · ${esc(f.build||'')} · ${new Date(f.at).toLocaleString()}</span></div><p dir="auto">${esc(f.text)}</p></li>`).join('')}</ol>`:'<p class="meta">No feedback yet.</p>'}
     <h2 class="display eh">Testers</h2><div class="tbl"><table><thead><tr><th>Tester</th><th>State</th><th>Steps</th><th>Last seen</th><th>Where</th></tr></thead><tbody>${P.sort((a,b)=>b.updatedAt-a.updatedAt).map(x=>`<tr><td dir="auto">${esc(x.handle||'A tester')}</td><td>${esc(x.identity||'')}</td><td>${x.milestones?Object.values(x.milestones).filter(Boolean).length:0} of ${FUNNEL.length}</td><td>${fmtDate(x.updatedAt)}</td><td>${esc(x.route||'')}</td></tr>`).join('')||'<tr><td colspan="5" class="meta">No testers yet.</td></tr>'}</tbody></table></div>
@@ -3623,16 +3635,16 @@ function lotTerritoriesInView(){ const {route,arg}=parse(), v=new Set(); if(ui.s
 function userObjects(){
   const list=shopObjects(), KN=k=>(BUILDING_DEFS[k]||{}).name||'Building', view=lotTerritoriesInView();
   (state.rights||[]).filter(r=>r.status==='active').forEach(r=>{ const pp=PBY[r.parcel]; if(!pp) return; const b=buildingOn(pp.id), pr=(state.projects||[]).find(x=>x.parcel===pp.id&&x.status==='active');
-    if(b) list.push({parcel:pp.id, id:'bld-'+pp.id, kind:b.def, cond:condOf(b), label:`Your ${KN(b.def)}`, region:pp.t, at:pp.at, place:''});
+    if(b) list.push({parcel:pp.id, id:'bld-'+pp.id, kind:b.def, cond:condOf(b), label:`Your ${KN(b.def)}${r.listing?' · listed':''}`, region:pp.t, at:pp.at, place:''});
     else if(pr){ const f=Math.min(1,(Date.now()-pr.start)/(pr.end-pr.start)); list.push({parcel:pp.id, id:'proj-'+pp.id, kind:'scaffold', h:.4+f*1.6, label:`Your ${KN(pr.def)}, building`, region:pp.t, at:pp.at, place:''}); }
     else list.push({parcel:pp.id, id:'parcel-'+pp.id, kind:pp.building==='homax'?'homax':'parcel', label:pp.building==='homax'?`Your Homax ${pp.id}`:`Your ${landWord(pp).toLowerCase()} ${pp.id}`, region:pp.t, at:pp.at, place:''}); });
   if(social.db){ social.citizens.filter(c=>c.id!==social.me).forEach(c=>(c.structures||[]).forEach((st,i)=>{ if(!st||!st.at||!(CIVIL_KINDS.includes(st.kind)||st.kind==='scaffold')) return;
-    const nm=citizenName(c), lab=st.kind==='scaffold'?`${nm}'s ${KN(st.def)}, building`:`${nm}'s ${KN(st.kind)}`, at=st.parcel&&PBY[st.parcel]?PBY[st.parcel].at:st.at;
+    const nm=citizenName(c), ls=st.parcel?listingOf(st.parcel):null, lab=(st.kind==='scaffold'?`${nm}'s ${KN(st.def)}, building`:`${nm}'s ${KN(st.kind)}`)+(ls?` · for sale ${ls.price} BuX`:''), at=st.parcel&&PBY[st.parcel]?PBY[st.parcel].at:st.at;
     list.push({id:'o-'+c.id.slice(-6)+'-'+i, kind:st.kind, h:st.kind==='scaffold'?.4+(st.f||0)*1.6:undefined, cond:st.cond, label:lab, region:st.t||'', at, place:'', parcel:st.parcel||'', other:true}); })); }
   if(state.parcelFocus && !rightFor(state,state.parcelFocus) && location.hash.startsWith('#/parcel/')){ const pp=PBY[state.parcelFocus]; list.push({parcel:pp.id, id:'focus', kind:'parcel', label:`${landWord(pp)} ${pp.id}`, region:pp.t, at:pp.at, place:''}); }
   PARCELS.forEach(pp=>{ if(rightFor(state,pp.id) || state.parcelFocus===pp.id) return; const av=parcelAvail(pp), cl=social.claims[pp.id];
     if(av==='AVAILABLE'){ if(pp.lot && !view.has(pp.t) && ui.parcel!==pp.id) return; list.push({id:'p-'+pp.id, kind:'forsale', parcel:pp.id, lot:!!pp.lot, label:`For sale · ${pp.price} BuX`, region:pp.t, at:pp.at, place:''}); }
-    else if(av==='HELD' && cl && cl.owner && cl.owner!==social.me && !list.some(u=>u.parcel===pp.id)) list.push({id:'p-'+pp.id, kind:'held', parcel:pp.id, label:cl.handle?`${cl.handle}'s land`:'Held land', region:pp.t, at:pp.at, place:''}); });
+    else if(av==='HELD' && cl && cl.owner && cl.owner!==social.me && !list.some(u=>u.parcel===pp.id)){ const ls=listingOf(pp.id); list.push({id:'p-'+pp.id, kind:'held', sale:!!ls, parcel:pp.id, label:ls?`${cl.handle||'A citizen'} sells · ${ls.price} BuX`:cl.handle?`${cl.handle}'s land`:'Held land', region:pp.t, at:pp.at, place:''}); } });
 
   if(state.builds.length) list.push({id:'monument', kind:'monument', label:state.builds[0].name, region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'});
   else if(state.construct){ const c=state.construct, f=Math.min(1,(Date.now()-c.start)/(c.end-c.start)); list.push({id:'scaffold', kind:'scaffold', h:.6+f*3.4, label:'Under construction', region:'xetropolitan', at:PL.civicsite.at, place:'civicsite'}); }
@@ -3741,13 +3753,18 @@ function viewParcel(id){
     { const used=parcelInUse(state,id), idleFrom=mine.idleSince?mine.idleSince+SIM.idle.graceDays*86400000:null;
       act+=`<dl class="kv" style="margin-top:1rem"><dt>Use</dt><dd>${used?'<b style="color:var(--cyan)">In use</b>':idleFrom&&Date.now()>=idleFrom?`<b style="color:var(--warn)">Idle</b>: pays ${fmtAmt(BigInt(mine.basis)*BigInt(SIM.idle.bpsPerDay)/10000n)} BuX a day to the ${esc(r.name)} treasury`:`Not yet used; idle fees start ${fmtDate(idleFrom||Date.now()+SIM.idle.graceDays*86400000)}`}</dd><dt>Flip fee if sold now</dt><dd>${flipFeeBps(Date.now()-mine.startAt)/100}% (falls to 0 after ${SIM.flip.zeroDays} days held)</dd></dl>`; }
     if(mine.rights.some(x=>x.startsWith('Transfer'))){ const fl=TERR[pp.t].resaleFloor?resaleFloor(pp.t,BigInt(mine.basis),Date.now()-mine.startAt):null;
-      act+= mine.listing?`<p class="meta" style="margin-top:1.2rem">Listed for ${fmtAmt(mine.listing.price)} BuX. No buyers are simulated yet. <button class="link" data-act="parcel-unlist" data-id="${id}">Withdraw</button></p>`
+      act+= mine.listing?`<p class="meta" style="margin-top:1.2rem">Listed for ${fmtAmt(mine.listing.price)} BuX.${serverMode?` Every citizen sees it on the map${(state.buildings||[]).some(x=>x.parcel===id)?', with what stands here':''}; when one buys, the land office pays you${flipFeeBps(Date.now()-mine.startAt)?` less the ${flipFeeBps(Date.now()-mine.startAt)/100}% anti-flip fee`:''}. Nothing can be built here while it is listed.`:' No buyers are simulated yet.'} <button class="link" data-act="parcel-unlist" data-id="${id}">Withdraw</button></p>`
         :`<div class="swap-row" style="margin-top:1.2rem"><label class="meta" for="pc-price">Asking price (BuX)${fl?`, minimum ${fmtAmt(fl)} under local law`:''}</label><input class="input" id="pc-price" inputmode="decimal"></div><button class="btn btn-quiet" data-act="parcel-list" data-id="${id}">List for sale</button>`; }
   } else if(av==='AVAILABLE'){
     act=`<h2 class="act-h">Acquire</h2><ul class="checks"><li class="${state.passport?'ok':'no'}">Passport</li><li class="${here(pp.t)?'ok':'no'}">On site in ${esc(r.name)}</li><li class="${BigInt(state.bal.bux)>=BigInt(pp.price)*UNIT?'ok':'no'}">Simulated terms: ${pp.price} BuX, paid to the ${esc(r.name)} treasury</li></ul>
       <div class="btn-row"><button class="btn btn-gold" data-act="parcel-buy" data-id="${id}">Acquire ${landWord(pp).toLowerCase()} ${id}</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
   } else if(av==='LEASE ONLY') act=`<h2 class="act-h">Lease only</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/resort">Go to the resort lodges</a>`;
   else if(id==='XET-C-01') act=`<h2 class="act-h">Public site</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/civicsite">Go to the Civic plaza</a>`;
+  else if(lotState(pp)==='listed'){ const cl=social.claims[id], o=othersOn(id), ls=listingOf(id), on=here(pp.t), funds=BigInt(state.bal.bux)>=BigInt(ls.price)*UNIT, capOk=!pp.lot||heldLotsIn(state,pp.t)<SIM.lotCapPerTerritory;
+    act=`<h2 class="act-h">For sale by ${esc(cl.handle||'another citizen')}</h2><p class="meta">${o?`With it: ${o.kind==='scaffold'?'a building under construction':`a ${esc((BUILDING_DEFS[o.kind]||{}).name||'building')}${o.cond!=null?`, condition ${o.cond}%`:''}`}. Buildings change hands with the land.`:'Nothing has been built here yet.'}</p>
+      <ul class="checks"><li class="${state.passport?'ok':'no'}">Passport</li><li class="${on?'ok':'no'}">On site in ${esc(r.name)}</li><li class="${funds?'ok':'no'}">Asking price: ${ls.price} BuX, paid to the seller through the land office</li>${pp.lot?`<li class="${capOk?'ok':'no'}">Up to ${SIM.lotCapPerTerritory} lots per citizen in ${esc(r.name)}</li>`:''}</ul>
+      <div class="btn-row"><button class="btn btn-gold" data-act="land-resale" data-id="${id}" data-price="${ls.price}" ${state.passport&&on&&funds&&capOk?'':'disabled'}>Buy for ${ls.price} BuX</button>${on?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>
+      <p class="meta faint" style="margin-top:.7rem">The seller pays the anti-flip fee if they held the land less than ${SIM.flip.zeroDays} days; you pay only the asking price.</p>`; }
   else if(lotState(pp)==='held'){ const cl=social.claims[id], o=othersOn(id);
     act=`<h2 class="act-h">Held by ${esc(cl.handle||'another citizen')}</h2><p class="meta">${o?`Standing here: ${o.kind==='scaffold'?`a ${esc((BUILDING_DEFS[o.def]||{}).name||'building')} under construction`:`a ${esc((BUILDING_DEFS[o.kind]||{}).name||'building')}${o.cond!=null?`, condition ${o.cond}%`:''}`}.`:'Nothing has been built here yet.'} ${esc(pp.note||'')}</p>${(pp.builds||[]).length?`<p class="meta" style="margin-top:.6rem">${lotsIn(pp.t).filter(x=>lotState(x)==='free').length} lots are still free in ${esc(r.name)}. <a class="link" href="#/world" data-act="select" data-id="${pp.t}">Find one on the map</a></p>`:''}`; }
   else act=`<h2 class="act-h">${av}</h2><p class="meta">${esc(pp.note||'')}</p>`;
@@ -4501,8 +4518,22 @@ document.addEventListener('click', e=>{
     case 'parcel-list': { const rt=rightFor(state,id), pp=PBY[id]; if(!rt) return; const price=parseAmt(($('#pc-price')||{}).value); if(price===null){ toast('Enter an asking price.'); return; }
       const rule=TERR[pp.t].resaleFloor?evaluate(pp.t,'sell-home',{price, basis:BigInt(rt.basis), heldMs:Date.now()-rt.startAt}):{ok:true};
       if(!rule.ok){ if(!state.blocked.includes(rule.key)) state.blocked.push(rule.key); save(); $('#law-out').innerHTML=`<div class="lawcard"><b>Not allowed by local law</b><p>${esc(rule.law)}</p></div>`; return; }
-      rt.listing={price:price.toString(), at:Date.now(), lawVersion:LAW_VERSION}; emit('PROPERTY_RIGHT_CHANGED',{parcel:id, change:'listed'}); save(); render(); toast('Listed for sale.'); break; }
-    case 'parcel-unlist': { const rt=rightFor(state,id); if(rt){ delete rt.listing; save(); render(); } break; }
+      const listed=()=>{ rt.listing={price:price.toString(), at:Date.now(), lawVersion:LAW_VERSION}; emit('PROPERTY_RIGHT_CHANGED',{parcel:id, change:'listed'}); save(); render(); toast('Listed for sale.'); };
+      if(serverMode && serverBE){ if(price%UNIT!==0n){ toast('Ask a whole number of BuX.'); return; } if(state.projects.some(x=>x.parcel===id&&x.status==='active')){ toast('Finish or cancel the building going up here first.'); return; } b.disabled=true;
+        serverBE.call('POST','/land/list?parcel='+encodeURIComponent(id)+'&price='+(price/UNIT).toString()).then(()=>{ listed(); refreshWorld(); }).catch(e=>{ $('#law-out').innerHTML=`<div class="lawcard"><b>Not listed</b><p>${esc(e.message)}</p></div>`; b.disabled=false; }); break; }
+      listed(); break; }
+    case 'parcel-unlist': { const rt=rightFor(state,id); if(!rt) return; const off=()=>{ delete rt.listing; save(); render(); toast('Listing withdrawn.'); };
+      if(serverMode && serverBE){ serverBE.call('POST','/land/unlist?parcel='+encodeURIComponent(id)).then(()=>{ off(); refreshWorld(); }).catch(e=>toast(e.message)); break; } off(); break; }
+    case 'land-resale': { const pp=PBY[id], ls=listingOf(id), price=Number(b.dataset.price); if(!serverMode||!serverBE||!pp||!ls||ls.price!==price||!here(pp.t)) return; b.disabled=true;
+      (async()=>{ let j; try{ await walletReady(); j=await serverBE.call('POST','/land/buy?parcel='+encodeURIComponent(id)+'&price='+price+'&handle='+encodeURIComponent((state.privacy||{}).name!=='private'?state.handle:'')); }
+        catch(e){ b.disabled=false; const o=$('#law-out'); if(o) o.innerHTML=`<div class="lawcard"><b>Cannot buy</b><p>${esc(e.message)}</p></div>`; refreshWorld(); return; }
+        const paid=BigInt(price)*UNIT, seller=(social.claims[id]||{}).handle||'another citizen';
+        postLedger(state,'land-buy-'+id+'-'+j.now.toString(36),[['bux',-paid,'citizen:'+(j.resale?j.resale.seller:'seller')]],`${landWord(pp)} ${id} bought from ${seller}`,id);
+        state.rights.push({id:'right-'+id+'-'+j.now.toString(36), parcel:id, territory:pp.t, rights:pp.rights, excluded:pp.excluded, use:pp.zoning[0], basis:paid.toString(), startAt:Date.now(), endAt:null, status:'active', lawVersion:LAW_VERSION});
+        (j.builds||[]).forEach(x=>{ state.buildings.push({id:'bld-'+id, def:x.def, parcel:id, at:x.end, version:BUILDING_DEFS[x.def].version, key:x.key});
+          if(x.def==='homax'){ const rt=rightFor(state,id); if(rt && !rt.rights.includes('Residence')) rt.rights=rt.rights.concat(['Residence']); } });
+        emit('PROPERTY_RIGHT_ACQUIRED',{parcel:id, from:'citizen'}); chron('PropertyAcquired',`${landWord(pp)} ${id} bought from ${seller}`,`${(j.builds||[]).length?`With it came the ${(j.builds||[]).map(x=>BUILDING_DEFS[x.def].name).join(' and ')}. `:''}Rights: ${pp.rights.join(', ')}.`,pp.t,'notable');
+        save(); render(); publishCitizen(); walletSync(); refreshWorld(); syncBuilds(); toast(`${landWord(pp)} ${id} is yours.`); })(); break; }
     case 'proj-start': { const pp=PBY[id], dk=b.dataset.def||'farmstead', D=BUILDING_DEFS[dk], rt=rightFor(state,id);
       if(!pp||!D||!rt||!(pp.builds||[]).includes(dk)||!here(pp.t)||state.projects.some(x=>x.parcel===id&&x.status==='active')||state.buildings.some(x=>x.parcel===id)) return;
       const key='proj-'+id+'-'+Date.now().toString(36), q=quarxCostU(D.recipe.quarx), bx=BigInt(D.recipe.bux)*UNIT;
