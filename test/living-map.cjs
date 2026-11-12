@@ -67,6 +67,17 @@ const world = require("../src/world.json"), LAND = Object.fromEntries(world.land
   r = await api(A, "POST", "/build/repair?key=" + key); check("Repairing a sound building charges nothing", r.status === 200 && r.body.repaired === false, err(r));
   r = await api(Bk, "POST", "/build/repair?key=" + key); check("Nobody can repair another citizen's building", r.status === 404, err(r));
 
+  // --- Bracing (r58) ---
+  r = await api(Bk, "POST", "/build/brace?key=" + key); check("Nobody can brace another citizen's building", r.status === 404, err(r));
+  const bb0 = BigInt((await wallet(A)).bal.bux);
+  r = await api(A, "POST", "/build/brace?key=" + key);
+  check("Bracing costs a tenth of the recipe value (18 BuX) and lasts 24 hours", r.status === 200 && r.body.braced === true && bb0 - BigInt((await wallet(A)).bal.bux) === 180000n && Math.abs(r.body.bracedUntil - r.body.now - 86400000) < 5000, err(r) + " " + (bb0 - BigInt((await wallet(A)).bal.bux)));
+  r = await api(A, "POST", "/build/brace?key=" + key); check("Bracing a braced building charges nothing", r.status === 200 && r.body.braced === false && bb0 - BigInt((await wallet(A)).bal.bux) === 180000n, err(r));
+  await api(A, "POST", "/hazard/raise?type=flood&t=xahara", null, FOUNDER);
+  bl = (await api(A, "GET", "/builds")).body.builds.find(b => b.key === key);
+  check("A braced building takes half the damage (flood: 7.5% instead of 15%)", bl && Math.abs(bl.cond - 92.5) < 0.2 && bl.hits.length === 1 && bl.hits[0].braced === true && bl.bracedUntil > Date.now() && bl.brace === "180000", JSON.stringify(bl && { cond: bl.cond, hits: bl.hits, brace: bl.brace }));
+  r = await api(A, "POST", "/ledger", { op: "brace-free-" + Date.now(), kind: "post", lines: [["bux", "-1"]] }); check("A page cannot make its own brace operation", r.status === 422, err(r));
+
   // --- The real-weather bridge (stand-in weather service in the dev server) ---
   r = await api(A, "POST", "/world/refresh"); check("Only the founder can read the weather by hand", r.status === 403, err(r));
   r = await api(A, "POST", "/world/refresh", null, FOUNDER);
@@ -77,6 +88,7 @@ const world = require("../src/world.json"), LAND = Object.fromEntries(world.land
   check("Heat in Dubai becomes a heatwave in Xetropolitan", wr.hazards.some(h => h.type === "heat" && h.territory === "xetropolitan"));
   check("A thunderstorm with light wind is described as one, not by its gusts", wr.hazards.some(h => h.territory === "ixeland" && h.type === "storm" && h.reading === "a thunderstorm"), JSON.stringify(wr.hazards.filter(h => h.territory === "ixeland").map(h => h.reading)));
   r = await api(A, "POST", "/world/refresh", null, FOUNDER); check("The same spell of weather read again raises nothing new", r.status === 200 && (r.body.raised || []).length === 0, JSON.stringify(r.body.raised));
+  check("The next twelve hours are read too: heavy snow is forecast for Xalp", wr.weather.xalp && wr.weather.xalp.forecast && wr.weather.xalp.forecast.type === "snow" && wr.weather.xalp.forecast.at > Date.now() && !wr.weather.xahara.forecast && wr.weather.farmx.forecast.type === "flood", JSON.stringify(wr.weather.xalp && wr.weather.xalp.forecast));
   await api(A, "POST", "/hazard/raise?type=heat&t=farmx", null, FOUNDER);
   r = await api(A, "POST", "/farm/start?kind=vegiex");
   check("A heatwave in FarmX lowers a harvest started there (12 → 8)", r.status === 200 && r.body.out === 8, err(r) + " out=" + r.body.out);

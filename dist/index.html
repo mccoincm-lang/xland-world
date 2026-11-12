@@ -1039,6 +1039,8 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .wx-strip .wx-lab,.wx-strip .wx-more{font-size:.78rem;color:#D9CCB0;padding:0 .2rem}
 .wx-chip{font:600 .78rem/1 var(--font-ui,inherit);padding:.4rem .65rem;border-radius:999px;border:1px solid rgba(242,166,90,.55);background:rgba(28,20,8,.82);color:#F3E6C8;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .wx-chip:hover{border-color:#F2A65A}
+.forecast{margin:.7rem 0;padding:.6rem .8rem;border-left:3px solid var(--gold);background:var(--gold-soft);font-size:.92rem;color:var(--text)}
+.brace-line{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.6rem 0}
 
 </style>
 </head>
@@ -1701,7 +1703,12 @@ function hazardMod(t, key, def){ let v=def; liveHazards().filter(h=>h.territory=
 function condInfo(b, st){ if(!b) return {cond:100, hits:[]}; if(b.srv) return {cond:b.srv.cond, hits:b.srv.hits||[]};
   const base=Math.max(b.at||0, b.repairedAt||0), t=(PBY[b.parcel]||{}).t, n=Date.now();
   const hits=allHazards(st).filter(h=>h.territory===t && h.start>=base && h.start<=n && HAZARDS[h.type] && HAZARDS[h.type].dmg);
-  return {cond:Math.max(0, Math.round((100-(n-base)/86400000*WORLD.wearPerDay-hits.reduce((a,h)=>a+HAZARDS[h.type].dmg,0))*10)/10), hits}; }
+  const bu=b.bracedUntil||0, braced=h=>h.start<bu && h.start>=bu-SIM.braceHours*3600000;
+  return {cond:Math.max(0, Math.round((100-(n-base)/86400000*WORLD.wearPerDay-hits.reduce((a,h)=>a+HAZARDS[h.type].dmg*(braced(h)?.5:1),0))*10)/10), hits:hits.map(h=>braced(h)?Object.assign({},h,{braced:true}):h)}; }
+SIM.braceHours=24;   // also BRACE_HOURS in worker.js
+function braceCost(b){ if(b.braceCost) return BigInt(b.braceCost); const D=BUILDING_DEFS[b.def]; return BigInt(Math.max(1,Math.ceil((D.recipe.bux+(D.recipe.quarx||0)*SIM.rates.quarx)*.1)))*UNIT; }
+/* Bad weather the twin's forecast expects within twelve hours (xland.world reads it hourly). */
+function forecastFor(t){ const w=serverMode&&world&&world.living&&world.living.weather?world.living.weather[t]:null, f=w&&w.forecast; if(!f||!HAZARDS[f.type]||f.at<=Date.now()) return null; return liveHazards().some(h=>h.territory===t&&h.type===f.type)?null:f; }
 const condOf = (b, st) => condInfo(b, st).cond;
 const condFactor = b => { const c=condOf(b); return c>=60?1:c>=30?.6:.3; };
 function repairCost(b){ if(b.srv && b.srv.repair) return {bux:BigInt(b.srv.repair.bux), quarx:BigInt(b.srv.repair.quarx)};
@@ -1717,7 +1724,7 @@ function damageNotices(){ if(!state.passport) return false; let ch=false; state.
 /* On xland.world: the server's condition and repair price for each finished building. */
 async function syncBuilds(){ if(!serverMode||!serverBE||!(state.buildings||[]).length) return; let j; try{ j=await serverBE.call('GET','/builds'); }catch(e){ return; }
   let ch=false; (j.builds||[]).filter(x=>x.status==='complete'&&x.cond!=null).forEach(x=>{ const b=state.buildings.find(y=>y.parcel===x.parcel&&y.def===x.def); if(!b) return;
-    if(b.key!==x.key || !b.srv || b.srv.cond!==x.cond){ ch=true; } b.key=x.key; b.srv={cond:x.cond, hits:x.hits||[], repair:x.repair, at:Date.now()}; });
+    if(b.key!==x.key || !b.srv || b.srv.cond!==x.cond){ ch=true; } b.key=x.key; b.srv={cond:x.cond, hits:x.hits||[], repair:x.repair, at:Date.now()}; b.bracedUntil=x.bracedUntil||0; b.braceCost=x.brace||null; });
   if(damageNotices()) ch=true; if(ch){ save(); livingChanged(); } }
 function livingChanged(){ const {route,arg}=parse(); XW.setWeather(weatherOnMap()); if(route==='world'){ socialChanged(); const pn=$('#world-panel'); if(pn && !ui.selected && !ui.place && !ui.parcel) pn.innerHTML=panelList(); } else if(route==='parcel' && PBY[arg] && !(document.activeElement&&document.activeElement.tagName==='INPUT')) render(); }
 function hazardBanner(t){ const hs=liveHazards().filter(h=>!t||h.territory===t); if(!hs.length) return '';
@@ -1730,6 +1737,7 @@ function landSummary(t){ const ls=lotsIn(t); if(!ls.length) return '';
   const st=ls.map(lotState), free=st.filter(x=>x==='free').length, mine=st.filter(x=>x==='mine').length, held=st.filter(x=>x==='held'||x==='listed').length, listed=st.filter(x=>x==='listed').length;
   return `<div class="panel-section land-sum"><h3>Land</h3><p><b>${free}</b> of ${ls.length} lots free${mine?`, <b>${mine}</b> yours`:''}${held?`, ${held} held by others`:''}${listed?` (<b>${listed}</b> offered for sale)`:''}. Zoom in and tap a marked lot on the map to see it.</p></div>`; }
 const fmtClock = ts => new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+const fmtWhen = ts => { const d=new Date(ts), same=d.toDateString()===new Date().toDateString(); return (same?'':d.toLocaleDateString([], {weekday:'long'})+', ')+fmtClock(ts); };
 /* The weather of a territory, as read from its twin on Earth: now, what it does here, and the last two days. */
 function weatherCardHTML(t){ const tw=TWINS[t]; if(!tw) return '';
   const L=serverMode&&world&&world.living?world.living:null, w=L&&L.weather?L.weather[t]:null, n=Date.now();
@@ -1737,6 +1745,7 @@ function weatherCardHTML(t){ const tw=TWINS[t]; if(!tw) return '';
   return `<div class="col wxcard"><h2>Weather from Earth</h2><p class="meta">${esc(R[t].name)}'s twin is <b>${esc(tw.name)}</b>. Real weather there becomes weather here.</p>
     ${w?`<div class="wx-now"><b>${Math.round(w.temp)}°C</b><span>wind ${Math.round(w.wind)} km/h${w.gust?`, gusts ${Math.round(w.gust)}`:''}${w.precip?`, rain ${w.precip.toFixed(1)} mm`:''}${w.snow?`, snow ${w.snow.toFixed(1)} cm`:''}</span></div><p class="meta faint">Read at ${fmtClock(w.at)}, once an hour.</p>`:`<p class="meta faint">${serverMode?'No reading yet: the first one arrives within the hour.':'Live readings appear on xland.world.'}</p>`}
     ${live.length?live.map(h=>`<div class="hz hz-${h.type}"><b>${esc(HAZARDS[h.type].name)} now</b><span>${h.source==='real'&&h.reading?esc(h.reading)+'. ':''}${esc(HAZARDS[h.type].effect)} Until ${fmtClock(h.end)}.</span></div>`).join(''):'<p class="wx-calm">Calm now. Buildings here are safe.</p>'}
+    ${(()=>{ const f=forecastFor(t); return f?`<p class="forecast"><b>Forecast: ${esc(HAZARDS[f.type].name)} around ${fmtWhen(f.at)}.</b> ${esc(tw.name)} expects ${esc(f.reading)}. Holders can brace their buildings before it arrives.</p>`:''; })()}
     ${past.length?`<h3 class="wx-h">Last two days</h3><ul class="plain wx-past">${past.map(h=>`<li><b>${esc(HAZARDS[h.type].name)}</b> <span class="meta">${fmtDate(h.start)}, ${fmtClock(h.start)}${h.reading?' · '+esc(h.reading):''}</span></li>`).join('')}</ul>`:''}</div>`; }
 /* Buildings of yours that work below full strength. */
 function damagedBuildings(){ return (state.buildings||[]).filter(b=>PBY[b.parcel]&&BUILDING_DEFS[b.def]&&condOf(b)<60); }
@@ -1746,7 +1755,8 @@ function repairAlertHTML(){ const d=damagedBuildings(); if(!d.length) return '';
 function landTabHTML(){
   const mine=(state.rights||[]).filter(r=>r.status==='active'&&PBY[r.parcel]), ls=(serverMode&&world&&world.living&&world.living.listings||[]).filter(l=>PBY[l.id]&&listingOf(l.id));
   const terr=REGIONS.filter(r=>lotsIn(r.id).length).map(r=>{ const free=lotsIn(r.id).filter(p=>lotState(p)==='free'); return {r, free:free.length, all:lotsIn(r.id).length, from:free.length?Math.min(...free.map(p=>p.price)):null}; });
-  return `${repairAlertHTML()}
+  const warn=(state.buildings||[]).filter(b=>PBY[b.parcel]&&forecastFor(PBY[b.parcel].t)&&(b.bracedUntil||0)<=Date.now());
+  return `${repairAlertHTML()}${warn.length?`<div class="repair-alert">${warn.map(b=>{ const f=forecastFor(PBY[b.parcel].t); return `<a href="#/parcel/${b.parcel}"><b>${esc(HAZARDS[f.type].name)} is forecast in ${esc(R[PBY[b.parcel].t].name)} around ${fmtWhen(f.at)}.</b><span>Brace your ${esc(BUILDING_DEFS[b.def].name)} on ${b.parcel}</span></a>`; }).join('')}</div>`:''}
   <div class="panel-section"><h3>Your land</h3>${mine.length?`<ul class="landlist">${mine.map(r=>{ const pp=PBY[r.parcel], b=buildingOn(pp.id), pr=(state.projects||[]).find(x=>x.parcel===pp.id&&x.status==='active'), c=b?Math.round(condOf(b)):null;
       return `<li><button data-act="parcel-sel" data-id="${pp.id}"><span class="bicon sm" style="--h:${b?BUILDING_DEFS[b.def].hue:R[pp.t].geo.hue}" aria-hidden="true">${b?BICON[b.def]||'':''}</span><span class="ll-main"><b>${landWord(pp)} ${pp.id}</b><span>${esc(R[pp.t].name)} · ${b?`${esc(BUILDING_DEFS[b.def].name)}, ${c}%`:pr?`${esc(BUILDING_DEFS[pr.def].name)} going up`:'nothing built yet'}${r.listing?' · listed':''}</span>${b?`<i class="ll-bar"><b style="width:${c}%;background:${c>=60?'var(--cyan)':c>=30?'var(--gold)':'var(--warn)'}"></b></i>`:''}</span></button></li>`; }).join('')}</ul>`
     :`<p class="meta">You hold no land yet. Choose a territory below, travel there, and buy a free lot.</p>`}</div>
@@ -1918,7 +1928,7 @@ function lockLedger(st, op, kind, asset, qty, reason, ref, dest){
    The server applies only valid operations. When the outbox is empty and the page has mirrored everything the server
    did (seams, harvests, market settlements), the page aligns its balances with the server's, recording any difference
    as an adjustment so the ledger still adds up. */
-const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-','parcel-','repair-','land-'];   // r55: land is bought through /api/land/buy and repairs through /api/build/repair   // r53: build sites are reserved, committed and released by the server
+const SERVER_CREDITED = ['mine-','prod-','mkt-recv-','mkt-sale-','mkt-deliver-','proj-','build-','parcel-','repair-','land-','brace-'];   // r55: land is bought through /api/land/buy and repairs through /api/build/repair   // r53: build sites are reserved, committed and released by the server
 /* Construction timed by the server (r53): the page asks the server first and only then mirrors the reservation locally. */
 async function srvBuild(path){ try{ return await serverBE.call('POST',path); }catch(e){ toast(e.message||'The build site could not be reached.'); throw e; } }
 function outboxPush(body){ if(!state.passport || SERVER_CREDITED.some(p=>body.op.startsWith(p))) return; state.outbox=state.outbox||[]; state.outbox.push(body); clearTimeout(outboxPush.t); outboxPush.t=setTimeout(()=>walletSync(), 1200); }
@@ -2639,10 +2649,11 @@ const XW = (function(){
       else if(u.kind==='farmstead'){ put('house',a[0],a[1],1.4,1.1,1,.3,[.48,.3,.18],u.cond!=null&&u.cond<40?N:[1,.78,.45,1]); put('cyl',a[0]+5,a[1]-2,.32,1.8,.32,0,[.66,.64,.6],[0,0,0,0]); pt(a[0],a[1],1.4,[1,.8,.45],2.4,0); top=2; }
       else if(u.kind==='shop'){ const c=u.tint||[.85,.62,.3]; put('box',a[0],a[1],1.7,1.1,1.3,u.rot||0,[.42,.34,.26],N); put('cone',a[0],a[1],1.45,.8,1.45,u.rot||0,c,[c[0],c[1],c[2],.8],1.1);
         pt(a[0],a[1],2.1,[1,.84,.5],u.mine?4.2:3.2,2); top=2.1; }
-      else if(u.kind==='scaffold'){ const h=u.h||1; put('box',a[0],a[1],1.6,h,1.6,0,[.36,.33,.3],[1,.75,.4,1]); for(let i=0;i<4;i++) pt(a[0]+(i%2?5:-5),a[1]+(i<2?5:-5),h+.3,[1,.75,.35],1,0); top=h+.5; }
-      else if(u.kind==='granary'){ const d=u.cond!=null&&u.cond<60; put('cyl',a[0]-1.5,a[1],.55,2.3,.55,0,[.72,.66,.55],N); put('dome',a[0]-1.5,a[1],.56,.4,.56,0,[.6,.3,.18],N,2.3); put('cyl',a[0]+1.6,a[1]+.6,.48,1.9,.48,0,[.7,.64,.54],N); put('dome',a[0]+1.6,a[1]+.6,.49,.36,.49,0,[.6,.3,.18],N,1.9); put('box',a[0],a[1]-2,1.1,.8,.8,0,[.45,.2,.14],d?N:[1,.78,.45,1]); top=2.9; }
+      else if(u.kind==='scaffold'){ const h=u.h||1; put('box',a[0],a[1],1.5,h*.7,1.5,0,[.5,.46,.4],N); [[-3,-3],[3,-3],[-3,3],[3,3]].forEach(([dx,dz])=>put('cyl',a[0]+dx,a[1]+dz,.05,h+.7,.05,0,[.8,.55,.25],[.85,.55,.2,2]));
+        put('box',a[0],a[1]-3,1.75,.06,.06,0,[.8,.55,.25],[.85,.55,.2,2],h+.6); put('box',a[0],a[1]+3,1.75,.06,.06,0,[.8,.55,.25],[.85,.55,.2,2],h+.6); pt(a[0],a[1],h+1.1,[1,.7,.3],2.4,2); top=h+1.2; }
+      else if(u.kind==='granary'){ const d=u.cond!=null&&u.cond<60, sg=[.46,.41,.32,2]; put('cyl',a[0]-1.5,a[1],.5,1.55,.5,0,[.78,.72,.6],sg); put('dome',a[0]-1.5,a[1],.51,.36,.51,0,[.62,.3,.18],[.3,.13,.07,2],1.55); put('cyl',a[0]+1.5,a[1]+.6,.42,1.25,.42,0,[.76,.7,.58],sg); put('dome',a[0]+1.5,a[1]+.6,.43,.32,.43,0,[.62,.3,.18],[.3,.13,.07,2],1.25); put('house',a[0],a[1]-2,1.2,.9,.9,.2,[.5,.24,.16],d?N:[1,.78,.45,1]); top=2.1; }
       else if(u.kind==='caravanserai'){ [[0,-4.2,2.4,.6],[0,4.2,2.4,.6],[-4.2,0,.6,2.4],[4.2,0,.6,2.4]].forEach(([dx,dz,sx,sz])=>put('box',a[0]+dx,a[1]+dz,sx,.75,sz,0,[.78,.62,.42],N)); put('dome',a[0],a[1],.8,.7,.8,0,[.85,.75,.55],N); pt(a[0],a[1],1.2,[1,.72,.4],2.2,0); top=1.6; }
-      if(u.cond!=null && u.cond<60){ pt(a[0],a[1],top+.2,[1,.3,.15],u.cond<30?3.2:2,1); }
+      if(u.cond!=null && u.cond<60){ const n=u.cond<30?5:2; for(let i=0;i<n;i++) pt(a[0]+(i%2?.8:-.8)*(i>1?1.4:1),a[1]+(i%3-1)*.9,top*.5,u.cond<30?[.9,.28,.08]:[.55,.5,.46],u.cond<30?1.5:1.1,1); }
       const [x,z]=toW(a[0],a[1]); placeAnchors['u-'+u.id]=[x,heightAt(a[0],a[1])+top+.4,z]; });
     userObjs=[]; for(const g in L) if(L[g].length) userObjs.push(makeInstanced(GEOS[g],L[g]));
     userPts = PTS.length ? makePoints(PTS) : null;
@@ -2962,7 +2973,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
     if(wxDirty){ rebuildWeather(); wxDirty=false; gl.useProgram(P.p.p); } if(wxAdd){ gl.bindVertexArray(wxAdd.vao); gl.drawArrays(gl.POINTS,0,wxAdd.count); }
     updateDyn(time); gl.bindVertexArray(dyn.vao); gl.drawArrays(gl.POINTS,0,dyn.count);
     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(P.p.u.uAM,storm?.34:.13); gl.bindVertexArray(clouds.vao); gl.drawArrays(gl.POINTS,0,clouds.count);
-    if(wxCl){ gl.uniform1f(P.p.u.uAM,.42); gl.bindVertexArray(wxCl.vao); gl.drawArrays(gl.POINTS,0,wxCl.count); }
+    if(wxCl){ gl.uniform1f(P.p.u.uAM,mode==='world'?(cam.dist<120?.22:.42):.14); gl.bindVertexArray(wxCl.vao); gl.drawArrays(gl.POINTS,0,wxCl.count); }
     gl.depthMask(true); gl.bindVertexArray(null);
     if(post) post.end(time, mode==='backdrop'?.8:mode==='region'?.85:.95, mode==='backdrop'?.55:1);
     updateOverlay();
@@ -3447,7 +3458,10 @@ function runSelfTests(){
     const c1=condOf(b,c), old=state.hazards; state.hazards=c.hazards; const cost=repairCost(b); state.hazards=old;
     return Math.round(c1)===80 && cost.bux===BigInt(Math.ceil(20/100*(120+2*SIM.rates.quarx)*.6))*UNIT && cost.quarx===0n && repairCost({def:'homax', parcel:b.parcel, at:n}).bux===0n; });
   t('A heatwave lowers harvests only in its own territory', ()=>{ if(serverMode) return true; const old=state.hazards; state.hazards=[{id:'h', type:'heat', territory:'farmx', start:Date.now()-1, end:Date.now()+60000}]; const a=hazardMod('farmx','yieldMult',1), b=hazardMod('xalp','yieldMult',1); state.hazards=old; return a===.7 && b===1; });
-  t('Land, resales and repairs are settled by the server, never pushed by the page', ()=>['parcel-','repair-','land-'].every(p=>SERVER_CREDITED.includes(p)));
+  t('A braced building takes half the damage of a hazard that begins while it is braced', ()=>{ if(serverMode) return true; const c=clone(), n=Date.now(), pid=PARCELS.find(p=>p.lot&&p.t==='farmx').id;
+    c.hazards=[{id:'b1', type:'storm', territory:'farmx', start:n-500, end:n+60000}];
+    return Math.round(condOf({def:'farmstead', parcel:pid, at:n-1000, bracedUntil:n+3600000},c))===90 && Math.round(condOf({def:'farmstead', parcel:pid, at:n-1000},c))===80 && braceCost({def:'farmstead'})===9n*UNIT; });
+  t('Land, resales and repairs are settled by the server, never pushed by the page', ()=>['parcel-','repair-','land-','brace-'].every(p=>SERVER_CREDITED.includes(p)));
   t('Your wallet reconciles with the ledger', ()=>reconcile(state));
   return T;
 }
@@ -3889,7 +3903,9 @@ function builtHTML(b, pp){ const D=BUILDING_DEFS[b.def], ci=condInfo(b), c=ci.co
   return `<h2 class="act-h" style="margin-top:1.4rem">Your ${esc(D.name)}</h2><p class="meta">${esc(D.operation)}</p>
     <div class="cond"><span>Condition</span><i><b style="width:${c}%;background:${c>=60?'var(--cyan)':c>=30?'var(--gold)':'var(--warn)'}"></b></i><em>${Math.round(c)}%</em></div>
     ${c<60?`<p class="meta">${c<30?'Badly damaged: it works at 30% until repaired.':'Damaged: it works at 60% until repaired.'}</p>`:''}
-    ${last?`<p class="meta">Last damage: ${esc(HAZARDS[last.type].name)}${last.source==='real'?` (real weather at ${esc(last.where||TWINS[pp.t].name)})`:''} on ${fmtDate(last.start)}, ${HAZARDS[last.type].dmg}% lost.</p>`:''}
+    ${(()=>{ const f=forecastFor(pp.t), on=(b.bracedUntil||0)>Date.now(); return `${f?`<p class="forecast"><b>${esc(HAZARDS[f.type].name)} is forecast here around ${fmtWhen(f.at)}.</b> ${TWINS[pp.t]?`${esc(TWINS[pp.t].name)} expects ${esc(f.reading)}. `:''}${on?'This building is braced.':'Brace it now and it takes half the damage.'}</p>`:''}
+      <p class="meta brace-line">${on?`Braced until ${fmtWhen(b.bracedUntil)}: hazards that begin before then do half their damage.`:`<button class="btn btn-quiet" data-act="brace" data-id="${pp.id}" ${here(pp.t)?'':'disabled'}>Brace for ${fmtAmt(braceCost(b))} BuX</button> <span>Halves the damage of any hazard that begins in the next ${SIM.braceHours} hours.</span>`}</p>`; })()}
+    ${last?`<p class="meta">Last damage: ${esc(HAZARDS[last.type].name)}${last.source==='real'?` (real weather at ${esc(last.where||TWINS[pp.t].name)})`:''} on ${fmtDate(last.start)}, ${HAZARDS[last.type].dmg*(last.braced?.5:1)}% lost${last.braced?' (braced)':''}.</p>`:''}
     <div class="btn-row" style="margin-top:.9rem">${cost.bux>0n?`<button class="btn btn-gold" data-act="repair" data-id="${pp.id}" ${here(pp.t)?'':'disabled'}>Repair for ${fmtAmt(cost.bux)} BuX${cost.quarx>0n?` and ${fmtAmt(cost.quarx)} QuarX`:''}</button>`:''}
       ${b.def==='farmstead'?'<a class="link" href="#/place/fields">Use your own plot</a>':''}${b.def==='caravanserai'?'<a class="link" href="#/place/bazaar">Search the dunes</a>':''}</div>
     ${cost.bux>0n&&!here(pp.t)?`<p class="meta" style="margin-top:.5rem">Repairs are made on site. <button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(R[pp.t].name)}</button></p>`:''}
@@ -4651,6 +4667,11 @@ document.addEventListener('click', e=>{
         emit('BUILD_COMPLETED',{parcel:pr.parcel, def:pr.def}); chron('BuildingCompleted',`${D.name} raised on ${pr.parcel}`,`${D.operation} It stands on the map of ${R[pp.t].name} for every citizen to see.`,pp.t,'notable');
         save(); render(); publishCitizen(); toast(pr.def==='homax'?'Homax complete. You can establish residence in it.':`${D.name} complete.`); };
       if(pr.server){ srvBuild('/build/done?key='+encodeURIComponent(pr.key)).then(()=>{ pr.commitAt=Math.min(pr.commitAt,Date.now()); finish(); }); break; } finish(); break; }
+    case 'brace': { const pp=PBY[id], bd=buildingOn(id); if(!pp||!bd||!here(pp.t)||(bd.bracedUntil||0)>Date.now()) return; const D=BUILDING_DEFS[bd.def], cost=braceCost(bd);
+      const done=(paid,until,op)=>{ postLedger(state,op,[['bux',-paid,'treasury:'+pp.t]],`Bracing of the ${D.name} on ${id}`,id); bd.bracedUntil=until; emit('BUILDING_BRACED',{parcel:id}); save(); render(); toast(`Braced. Your ${D.name} takes half the damage for ${SIM.braceHours} hours.`); };
+      if(serverMode && serverBE){ if(!bd.key){ toast('The build site has not synced yet. Try again in a moment.'); syncBuilds(); return; } b.disabled=true;
+        serverBE.call('POST','/build/brace?key='+encodeURIComponent(bd.key)).then(j=>{ if(!j.braced){ bd.bracedUntil=j.bracedUntil||0; save(); render(); return; } done(BigInt(j.paid.bux), j.bracedUntil, 'brace-'+bd.key+'-'+j.now.toString(36)); walletSync(); }).catch(e=>{ toast(e.message); render(); }); break; }
+      if(BigInt(state.bal.bux)<cost){ toast('Not enough BuX to brace.'); return; } done(cost, Date.now()+SIM.braceHours*3600000, opId('brace-'+id)); break; }
     case 'repair': { const pp=PBY[id], bd=buildingOn(id); if(!pp||!bd||!here(pp.t)) return; const cost=repairCost(bd), D=BUILDING_DEFS[bd.def]; if(cost.bux===0n) return;
       const done=paid=>{ bd.repairedAt=Date.now(); if(bd.srv) bd.srv={cond:100, hits:[], repair:{bux:'0', quarx:'0'}, at:Date.now()};
         emit('BUILDING_REPAIRED',{parcel:id}); chron('BuildingRepaired',`${D.name} repaired on ${id}`,`Restored to full condition for ${fmtAmt(paid.bux)} BuX${paid.quarx>0n?` and ${fmtAmt(paid.quarx)} QuarX`:''}.`,pp.t,'ordinary'); save(); render(); publishCitizen(); toast('Repaired. It works at full strength again.'); };

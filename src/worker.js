@@ -75,6 +75,7 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS xl_ballots (pid TEXT NOT NULL, uid TEXT NOT NULL, choice TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (pid, uid))",
   // The living map (r55): buildings wear and are repaired; hazards raised by real weather at each territory's twin on Earth
   "ALTER TABLE xl_builds ADD COLUMN repaired_at INTEGER",
+  "ALTER TABLE xl_builds ADD COLUMN braced_until INTEGER",   // r58: bracing halves the damage of hazards that begin in the next 24 hours
   "CREATE TABLE IF NOT EXISTS xl_hazards (id TEXT PRIMARY KEY, type TEXT NOT NULL, territory TEXT NOT NULL, start INTEGER NOT NULL, ends INTEGER NOT NULL, source TEXT NOT NULL, place TEXT, reading TEXT)",
   "CREATE INDEX IF NOT EXISTS xl_hazards_t ON xl_hazards (territory, start)",
   "CREATE TABLE IF NOT EXISTS xl_weather (t TEXT PRIMARY KEY, data TEXT NOT NULL, at INTEGER NOT NULL)",
@@ -221,6 +222,14 @@ async function sandboxMint(env, uid, now){
   return walletApply(env, uid, 'sandbox-grant', { bux: BigInt(amount) }, null, { d: { bux: String(amount) }, src: 'mint' });
 }
 /* Validate an operation proposed by a citizen's page and apply it. */
+const PAGE_LOCK_PREFIXES = ['mkt-list-', 'mkt-unlist-', 'mkt-deliver-', 'shop-'];
+/* Did this citizen pay the server at least `min` BuX (in units) under this operation? Never trusts that an operation of
+   that name merely exists. */
+async function paidOp(env, uid, op, min){
+  const r = await env.DB.prepare('SELECT data FROM xl_ledger WHERE uid = ?1 AND op = ?2').bind(uid, op).first(); if(!r) return false;
+  try { const d = JSON.parse(r.data).d; return !!d && -BigInt(d.bux || '0') >= BigInt(min); } catch { return false; }
+}
+async function applyRetry(env, uid, op, avail, locked, data){ let r; for(let i = 0; i < 3; i++){ r = await walletApply(env, uid, op, avail, locked, data); if(r.ok || !/busy/i.test(r.why || '')) break; } return r; }
 async function walletPropose(env, uid, body, now){
   const op = String(body.op || '');
   if(!/^[A-Za-z0-9_\-:.]{3,96}$/.test(op) || op.startsWith('srv-') || op.startsWith('import-')) return { ok: false, why: 'Invalid operation.' };
@@ -229,6 +238,9 @@ async function walletPropose(env, uid, body, now){
     const a = body.asset, q = B(body.qty);
     if(!WALLET_ASSETS.includes(a) || q === null || q <= 0n) return { ok: false, why: 'Invalid reservation.' };
     if(BUILD_PREFIXES.some(p => op.startsWith(p))) return { ok: false, why: 'Construction is timed by the server.' };   // r53: build sites reserve, release and consume through /api/build/*
+    // r58: a page may reserve only for its shop and its market listings. Before this, a one-unit reservation named like a
+    // land payment (`parcel-…`, `homax-acquire`) passed for the payment itself.
+    if(!PAGE_LOCK_PREFIXES.some(p => op.startsWith(p))) return { ok: false, why: 'This reservation is made by the server.' };
     if(op.startsWith('mkt-list-') && body.lk === 'LOCK'){
       if(await listableQty(env, uid, a) < q) return { ok: false, why: 'A shop sells only what you produced yourself. Bought goods cannot be resold.' };
       if(a === 'quarx'){ const { w } = await walletGet(env, uid); if(BigInt(w.bal.quarx || '0') - await vestedQuarx(env, uid, now) < q) return { ok: false, why: 'Presale QuarX becomes tradable 12 months after the presale.' }; } }
@@ -244,7 +256,7 @@ async function walletPropose(env, uid, body, now){
   const pos = Object.entries(d).filter(([, v]) => v > 0n), data = { d: Object.fromEntries(Object.entries(d).map(([a, v]) => [a, v.toString()])) };
   // r55: land and repairs are settled by the server (/api/land/buy, /api/build/repair): a page-made `parcel-` op of one unit
   // would otherwise unlock a claim and residency. A Homax counts for residency only at its full price.
-  if(op.startsWith('parcel-') || op.startsWith('repair-') || op.startsWith('land-')) return { ok: false, why: 'Land and repairs are settled by the land office.' };
+  if(op.startsWith('parcel-') || op.startsWith('repair-') || op.startsWith('land-') || op.startsWith('brace-')) return { ok: false, why: 'Land and repairs are settled by the land office.' };
   if(op === 'homax-acquire' && (pos.length || Object.keys(d).some(a => a !== 'bux') || -(d.bux || 0n) < BigInt(HOMAX_PRICE * UNIT))) return { ok: false, why: 'A Homax costs ' + HOMAX_PRICE + ' BuX.' };
   if(!pos.length) return walletApply(env, uid, op, d, null, data);                           // spending only
   if(op === 'sandbox-grant') return sandboxMint(env, uid, now);
@@ -317,8 +329,12 @@ async function landBuy(env, uid, id, handle, now, expect){
   const data = { owner: uid, handle: String(handle || '').slice(0, 24), parcel: id, at: now, paid: l.price };
   const ins = await env.DB.prepare("INSERT OR IGNORE INTO xl_docs (col, id, data, owner, updated_at) VALUES ('claims', ?1, ?2, ?3, ?4)").bind(id, JSON.stringify(data), uid, now).run();
   if(!ins.meta.changes) return { s: 409, why: 'Another citizen acquired this parcel a moment ago.' };
+  const unclaim = () => env.DB.prepare("DELETE FROM xl_docs WHERE col = 'claims' AND id = ?1 AND owner = ?2").bind(id, uid).run();
+  // two purchases at once must not pass the cap together: count again now that this claim is in the registry
+  if(l.lot && (await landHolders(env)).filter(h => h.owner === uid && h.t === l.t && LAND[h.id].lot).length > LOT_CAP){ await unclaim(); return { s: 409, why: `One citizen can hold up to ${LOT_CAP} lots in each territory. Build on the land you have first.` }; }
   const price = BigInt(l.price * UNIT), r = await walletApply(env, uid, 'parcel-' + id, { bux: -price }, null, { d: { bux: (-price).toString() }, src: 'land', t: l.t });
-  if(!r.ok){ await env.DB.prepare("DELETE FROM xl_docs WHERE col = 'claims' AND id = ?1 AND owner = ?2").bind(id, uid).run(); return { s: 409, why: r.why }; }
+  // an operation of this name already in the ledger counts only if it really paid the price
+  if(!r.ok || (r.dup && !(await paidOp(env, uid, 'parcel-' + id, price)))){ await unclaim(); return { s: 409, why: r.ok ? 'This land has not been paid for.' : r.why }; }
   if(!r.dup){ await addWorld(env, 'land_sold', 1); await setBasis(env, id, uid, l.price, now); }
   return { s: 200, claim: data };
 }
@@ -349,13 +365,16 @@ async function landList(env, uid, id, price, now){
   if(!c || c.owner !== uid) return { s: 403, why: 'You do not hold this land.' };
   if(!Number.isInteger(price) || price < 1 || price > 10000000) return { s: 400, why: 'Enter an asking price in whole BuX.' };
   if(await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND parcel = ?2 AND status IN ('active', 'committed')").bind(uid, id).first()) return { s: 409, why: 'Finish or cancel the building going up here first.' };
+  if(!(await env.DB.prepare('SELECT 1 FROM xl_landbasis WHERE id = ?1 AND owner = ?2').bind(id, uid).first()) && !(await paidOp(env, uid, 'parcel-' + id, l.price * UNIT)) && !(/^XIM-R-/.test(id) && await paidOp(env, uid, 'homax-acquire', HOMAX_PRICE * UNIT))) return { s: 409, why: 'The payment for this land has not settled yet.' };
   const b = await landBasis(env, id, uid), floor = RESALE_FLOOR[l.t];
   if(floor != null && price < b.basis + floor) return { s: 409, why: `Local law: land here is never resold below its acquisition price + ${floor} BuX, so at least ${b.basis + floor} BuX.` };
   await env.DB.prepare('INSERT INTO xl_listings (id, seller, price, at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(id) DO UPDATE SET seller = excluded.seller, price = excluded.price, at = excluded.at').bind(id, uid, price, now).run();
+  if(await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND parcel = ?2 AND status IN ('active', 'committed')").bind(uid, id).first()){ await env.DB.prepare('DELETE FROM xl_listings WHERE id = ?1 AND seller = ?2').bind(id, uid).run(); return { s: 409, why: 'Finish or cancel the building going up here first.' }; }
   return { s: 200, listing: { id, price, at: now, feeBps: flipFeeBps(now - b.at) } };
 }
 async function landResale(env, uid, id, l, ls, expect, handle, now){
-  if(expect !== null && expect !== undefined && expect !== '' && Number(expect) !== Number(ls.price)) return { s: 409, why: 'The asking price has changed. Look again before you buy.' };
+  if(expect === null || expect === undefined || expect === '') return { s: 409, why: `A citizen offers this land for ${ls.price} BuX. Open it again to buy at that price.` };
+  if(Number(expect) !== Number(ls.price)) return { s: 409, why: 'The asking price has changed. Look again before you buy.' };
   if(l.lot && (await landHolders(env)).filter(h => h.owner === uid && h.t === l.t && LAND[h.id].lot).length >= LOT_CAP) return { s: 409, why: `One citizen can hold up to ${LOT_CAP} lots in each territory. Build on the land you have first.` };
   const seller = ls.seller, price = BigInt(ls.price) * BigInt(UNIT);
   if(await env.DB.prepare("SELECT 1 FROM xl_builds WHERE uid = ?1 AND parcel = ?2 AND status IN ('active', 'committed')").bind(seller, id).first()) return { s: 409, why: 'A building is going up here. Try again when it is finished.' };
@@ -368,12 +387,16 @@ async function landResale(env, uid, id, l, ls, expect, handle, now){
   const b = await landBasis(env, id, seller), feeBps = flipFeeBps(now - b.at), fee = price * BigInt(feeBps) / 10000n;
   const data = { owner: uid, handle: String(handle || '').slice(0, 24), parcel: id, at: now, paid: Number(ls.price) };
   const mv = await env.DB.prepare("UPDATE xl_docs SET owner = ?1, data = ?2, updated_at = ?3 WHERE col = 'claims' AND id = ?4 AND owner = ?5").bind(uid, JSON.stringify(data), now, id, seller).run();
-  if(!mv.meta.changes){ await walletApply(env, uid, 'land-refund-' + tag, { bux: price }, null, { d: { bux: price.toString() }, src: 'land-refund', parcel: id }); return { s: 409, why: 'The land changed hands a moment ago. You were not charged.' }; }
-  await walletApply(env, seller, 'land-sale-' + tag, { bux: price - fee }, null, { d: { bux: (price - fee).toString() }, src: 'land-resale', parcel: id, buyer: uid, fee: fee.toString(), feeBps, t: l.t });
+  if(!mv.meta.changes){ await applyRetry(env, uid, 'land-refund-' + tag, { bux: price }, null, { d: { bux: price.toString() }, src: 'land-refund', parcel: id }); return { s: 409, why: 'The land changed hands a moment ago. You were not charged.' }; }
+  await setBasis(env, id, uid, Number(ls.price), now);
+  const paidSeller = await applyRetry(env, seller, 'land-sale-' + tag, { bux: price - fee }, null, { d: { bux: (price - fee).toString() }, src: 'land-resale', parcel: id, buyer: uid, fee: fee.toString(), feeBps, t: l.t });
+  if(!paidSeller.ok) await env.DB.prepare('INSERT INTO xl_rejects (uid, op, why, body, at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(seller, 'land-sale-' + tag, 'PAYOUT OWED ' + (price - fee).toString() + ' units: ' + (paidSeller.why || ''), '', now).run().catch(() => {});
   if(fee > 0n) await addWorld(env, 'land_fees', Number(fee));
   const { results: moved } = await env.DB.prepare("SELECT * FROM xl_builds WHERE uid = ?1 AND parcel = ?2 AND status = 'complete'").bind(seller, id).all();
-  await env.DB.prepare("UPDATE xl_builds SET uid = ?1, updated = ?3 WHERE uid = ?2 AND parcel = ?4 AND status = 'complete'").bind(uid, seller, now, id).run();
-  await setBasis(env, id, uid, Number(ls.price), now);
+  // a building keeps its key unless the buyer already has one of that name (keys are unique per citizen)
+  for(const m of moved){ let key = m.key;
+    if(await env.DB.prepare('SELECT 1 FROM xl_builds WHERE uid = ?1 AND key = ?2').bind(uid, key).first()) key = m.key.replace(/~.*$/, '') + '~' + now.toString(36);
+    await env.DB.prepare('UPDATE xl_builds SET uid = ?1, key = ?2, updated = ?3 WHERE uid = ?4 AND key = ?5').bind(uid, key, now, seller, m.key).run(); m.key = key; }
   await addWorld(env, 'land_resold', 1);
   return { s: 200, claim: data, resale: { price: Number(ls.price), seller, feeBps, fee: fee.toString() }, builds: moved.map(buildOut) };
 }
@@ -411,13 +434,19 @@ async function weatherBridge(env, now){
   await ensureSchema(env);
   const ids = Object.keys(TWINS), f = env.WEATHER_FETCH || fetch;
   const q = new URLSearchParams({ latitude: ids.map(i => TWINS[i].lat).join(','), longitude: ids.map(i => TWINS[i].lon).join(','),
-    current: 'temperature_2m,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,weather_code', wind_speed_unit: 'kmh', timezone: 'UTC' });
+    current: 'temperature_2m,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,weather_code', hourly: 'temperature_2m,precipitation,snowfall,wind_gusts_10m,weather_code', forecast_hours: '12', wind_speed_unit: 'kmh', timezone: 'UTC' });
   const r = await f('https://api.open-meteo.com/v1/forecast?' + q.toString(), { headers: { 'user-agent': 'xland.world weather bridge' } });
   if(!r.ok) throw new Error('weather service ' + r.status);
   let data = await r.json(); if(!Array.isArray(data)) data = [data];
   const raised = [];
   for(let i = 0; i < ids.length; i++){ const t = ids[i], c = (data[i] || {}).current; if(!c) continue;
     const w = { temp: +c.temperature_2m || 0, precip: +c.precipitation || 0, snow: +c.snowfall || 0, wind: +c.wind_speed_10m || 0, gust: +c.wind_gusts_10m || 0, code: +c.weather_code || 0, at: now };
+    // the first hour of the next twelve whose forecast would raise a hazard here, so citizens can brace in time
+    const hr = (data[i] || {}).hourly;
+    if(hr && Array.isArray(hr.time)) for(let k = 0; k < hr.time.length; k++){ const at = Date.parse(hr.time[k] + ':00Z'); if(!(at > now + 1800000)) continue;
+      const fw = { temp: +(hr.temperature_2m || [])[k] || 0, precip: +(hr.precipitation || [])[k] || 0, snow: +(hr.snowfall || [])[k] || 0, gust: +(hr.wind_gusts_10m || [])[k] || 0, code: +(hr.weather_code || [])[k] || 0 };
+      const fr = HAZARD_RULES.find(h => h.test(fw)); if(!fr || (fr.type === 'heat' && !HEAT_LANDS.includes(t))) continue;
+      w.forecast = { type: fr.type, at, reading: fr.read(fw).replace(' in the last hour', ' in one hour') }; break; }
     await env.DB.prepare('INSERT INTO xl_weather (t, data, at) VALUES (?1, ?2, ?3) ON CONFLICT(t) DO UPDATE SET data = excluded.data, at = excluded.at').bind(t, JSON.stringify(w), now).run();
     const rule = HAZARD_RULES.find(h => h.test(w)); if(!rule || (rule.type === 'heat' && !HEAT_LANDS.includes(t))) continue;
     const h = await raiseHazard(env, { id: `wx-${t}-${rule.type}-${Math.floor(now / 3600000)}`, type: rule.type, territory: t, start: now, ends: now + HAZARD_HOURS * 3600000, source: 'real', place: TWINS[t].name, reading: rule.read(w) });
@@ -431,8 +460,9 @@ function buildCond(b, hz, now){
   if(b.status !== 'complete') return null;
   const base = Math.max(Number(b.ends), Number(b.repaired_at || 0)), t = buildTerritory(b);
   const hits = hz.filter(h => h.territory === t && Number(h.start) >= base && Number(h.start) <= now && HAZ[h.type] && HAZ[h.type].dmg);
-  const cond = Math.max(0, 100 - (now - base) / 86400000 * WORLD.wearPerDay - hits.reduce((a, h) => a + HAZ[h.type].dmg, 0));
-  return { cond: Math.round(cond * 10) / 10, hits: hits.map(hazardOut) };
+  const bu = Number(b.braced_until || 0), braced = h => Number(h.start) < bu && Number(h.start) >= bu - BRACE_HOURS * 3600000;
+  const cond = Math.max(0, 100 - (now - base) / 86400000 * WORLD.wearPerDay - hits.reduce((a, h) => a + HAZ[h.type].dmg * (braced(h) ? BRACE_FACTOR : 1), 0));
+  return { cond: Math.round(cond * 10) / 10, hits: hits.map(h => Object.assign(hazardOut(h), braced(h) ? { braced: true } : {})), bracedUntil: bu > now ? bu : 0 };
 }
 const condFactor = c => c == null ? 1 : c >= 60 ? 1 : c >= 30 ? 0.6 : 0.3;
 function repairCost(b, cond, mined){
@@ -440,6 +470,10 @@ function repairCost(b, cond, mined){
   const value = (D.recipe.bux || 0) + (D.recipe.quarx || 0) * RATES.quarx;
   return { bux: BigInt(Math.max(1, Math.ceil(missing / 100 * value * 0.6))) * BigInt(UNIT), quarx: cond < 40 ? BigInt(quarxCost(1, mined)) : 0n };
 }
+/* Bracing (r58): before bad weather a holder can brace a finished building for a tenth of its recipe value in BuX.
+   For the next BRACE_HOURS, hazards that begin in its territory do half their damage. Simulation values. */
+const BRACE_HOURS = 24, BRACE_FACTOR = 0.5;
+function braceCost(b){ const D = BUILDS[b.def]; return BigInt(Math.max(1, Math.ceil(((D.recipe.bux || 0) + (D.recipe.quarx || 0) * RATES.quarx) * 0.1))) * BigInt(UNIT); }
 async function heatMult(env, t, now){ const h = await env.DB.prepare("SELECT 1 FROM xl_hazards WHERE territory = ?1 AND type = 'heat' AND start <= ?2 AND ends > ?2").bind(t, now).first(); return h ? HAZ.heat.yieldMult : 1; }
 
 /* ---------------- Construction timed by the server (r53) ----------------
@@ -485,6 +519,8 @@ async function buildStart(env, uid, def, key, parcel, name, now){
   const secs = D.secs * 1000, row = { started: now, commit_at: now + Math.round(secs * D.commitPct), ends: now + secs };
   await env.DB.prepare('INSERT OR IGNORE INTO xl_builds (uid, key, def, parcel, name, started, commit_at, ends, reserved, status, updated) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?6)')
     .bind(uid, key, def, parcel || null, String(name || '').slice(0, 32) || null, now, row.commit_at, row.ends, JSON.stringify(reserved), 'active').run();
+  // a listing made at the same moment gives way: land is never both for sale and under construction
+  if(D.onLand) await env.DB.prepare('DELETE FROM xl_listings WHERE id = ?1 AND seller = ?2').bind(parcel, uid).run();
   return { s: 200, build: buildOut(await buildGet(env, uid, key)) };
 }
 async function buildCommit(env, uid, b, now){
@@ -509,7 +545,9 @@ const CHOICES = ['yes', 'no', 'abstain'];
 function proposalLaw(type){ if(LAWS[type]) return { law: type, repeal: false }; if(type.startsWith('repeal-') && LAWS[type.slice(7)]) return { law: type.slice(7), repeal: true }; return null; }
 /* A resident holds a home: a Homax or a parcel paid for on the server, or a parcel claimed in the shared world. */
 async function isResident(env, uid){
-  if(await env.DB.prepare("SELECT 1 FROM xl_ledger WHERE uid = ?1 AND (op = 'homax-acquire' OR op LIKE 'parcel-%') LIMIT 1").bind(uid).first()) return true;
+  if(await paidOp(env, uid, 'homax-acquire', HOMAX_PRICE * UNIT)) return true;
+  const { results: paid } = await env.DB.prepare("SELECT op, data FROM xl_ledger WHERE uid = ?1 AND op LIKE 'parcel-%' LIMIT 20").bind(uid).all();
+  if(paid.some(r => { try { const l = LAND[r.op.slice(7)], d = JSON.parse(r.data).d; return !!l && !!d && -BigInt(d.bux || '0') >= BigInt(l.price * UNIT); } catch { return false; } })) return true;
   const { results } = await env.DB.prepare("SELECT data FROM xl_docs WHERE col = 'claims' AND owner = ?1 LIMIT 20").bind(uid).all();
   return results.some(r => { try { return JSON.parse(r.data).owner === uid; } catch { return false; } });
 }
@@ -685,7 +723,7 @@ async function api(req, env, url){
     let mult = Math.min(1, Math.max(0.5, Number(q.get('mult')) || 1));   // the page may only lower a yield (droughts, events)
     mult *= await heatMult(env, 'farmx', now);   // r55: a heatwave in FarmX lowers every harvest started there
     if(slot === 'own'){ const fs = await env.DB.prepare("SELECT * FROM xl_builds WHERE uid = ?1 AND def = 'farmstead' AND status = 'complete' ORDER BY ends LIMIT 1").bind(me.uid).first();
-      if(fs){ const c = buildCond(fs, await hazardsSince(env, 0), now); mult *= condFactor(c && c.cond); } }   // a damaged farmstead yields less until repaired
+      if(fs){ const c = buildCond(fs, await hazardsSince(env, Math.max(Number(fs.ends), Number(fs.repaired_at || 0))), now); mult *= condFactor(c && c.cond); } }   // a damaged farmstead yields less until repaired
     const out = Math.max(1, Math.floor(f.out * mult)), end = now + f.secs * 1000, op = (slot === 'own' ? 'prod-own-' : 'prod-') + kind + '-' + now.toString(36) + Math.random().toString(36).slice(2, 6);
     await env.DB.prepare('INSERT OR IGNORE INTO xl_plots (uid, slot, kind, started, ends, out, op) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)').bind(me.uid, slot, kind, now, end, out, op).run();
     const s2 = await env.DB.prepare('SELECT * FROM xl_plots WHERE uid = ?1 AND slot = ?2').bind(me.uid, slot).first();
@@ -706,8 +744,9 @@ async function api(req, env, url){
   /* Construction timed by the server (r53) */
   if(p === '/api/builds' && req.method === 'GET'){
     const { results } = await env.DB.prepare('SELECT * FROM xl_builds WHERE uid = ?1 ORDER BY started DESC LIMIT 50').bind(me.uid).all();
-    const hz = await hazardsSince(env, 0), mined = await worldCounter(env, 'quarx_mined');
-    return json({ok:true, now, builds: results.map(b => { const o = buildOut(b), c = buildCond(b, hz, now); if(c){ const rc = repairCost(b, c.cond, mined); Object.assign(o, c, { repair: { bux: rc.bux.toString(), quarx: rc.quarx.toString() } }); } return o; }), recipes: Object.fromEntries(Object.entries(BUILDS).map(([k, d]) => [k, { territory: d.territory, recipe: d.recipe, secs: d.secs, commitPct: d.commitPct, law: d.law || null, once: !!d.once }]))});
+    const baseOf = b => Math.max(Number(b.ends), Number(b.repaired_at || 0));   // only hazards that can still matter are read
+    const hz = await hazardsSince(env, results.length ? Math.min(...results.map(baseOf)) : now), mined = await worldCounter(env, 'quarx_mined');
+    return json({ok:true, now, builds: results.map(b => { const o = buildOut(b), c = buildCond(b, hz, now); if(c){ const rc = repairCost(b, c.cond, mined); Object.assign(o, c, { repair: { bux: rc.bux.toString(), quarx: rc.quarx.toString() }, brace: braceCost(b).toString() }); } return o; }), recipes: Object.fromEntries(Object.entries(BUILDS).map(([k, d]) => [k, { territory: d.territory, recipe: d.recipe, secs: d.secs, commitPct: d.commitPct, law: d.law || null, once: !!d.once }]))});
   }
   if(p === '/api/build/start' && req.method === 'POST'){
     if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
@@ -715,17 +754,34 @@ async function api(req, env, url){
     return r.s === 200 ? json({ok:true, now, build: r.build}) : fail(r.s, r.why);
   }
   if(p === '/api/build/repair' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
     const b = await buildGet(env, me.uid, q.get('key') || '');
     if(!b) return fail(404, 'No such building.');
-    const c = buildCond(b, await hazardsSince(env, 0), now); if(!c) return fail(409, 'Only a finished building can be repaired.');
+    const c = buildCond(b, await hazardsSince(env, Math.max(Number(b.ends), Number(b.repaired_at || 0))), now); if(!c) return fail(409, 'Only a finished building can be repaired.');
     const cost = repairCost(b, c.cond, await worldCounter(env, 'quarx_mined'));
     if(cost.bux === 0n) return json({ok:true, now, cond: c.cond, repaired: false});
     const lines = { bux: -cost.bux }; if(cost.quarx > 0n) lines.quarx = -cost.quarx;
+    // take the repair first (only one of several requests at once can), then charge; hand it back if the charge fails
+    const was = Number(b.repaired_at || 0);
+    const took = await env.DB.prepare('UPDATE xl_builds SET repaired_at = ?3, updated = ?3 WHERE uid = ?1 AND key = ?2 AND COALESCE(repaired_at, 0) = ?4').bind(me.uid, b.key, now, was).run();
+    if(!took.meta.changes) return json({ok:true, now, cond: 100, repaired: false});
     const r = await walletApply(env, me.uid, 'repair-' + b.key + '-' + now.toString(36), lines, null, { d: Object.fromEntries(Object.entries(lines).map(([a, v]) => [a, v.toString()])), src: 'repair', key: b.key, t: buildTerritory(b) });
-    if(!r.ok) return fail(409, r.why);
-    await env.DB.prepare('UPDATE xl_builds SET repaired_at = ?3, updated = ?3 WHERE uid = ?1 AND key = ?2').bind(me.uid, b.key, now).run();
+    if(!r.ok || r.dup){ await env.DB.prepare('UPDATE xl_builds SET repaired_at = ?3 WHERE uid = ?1 AND key = ?2 AND repaired_at = ?4').bind(me.uid, b.key, was || null, now).run(); return fail(409, r.ok ? 'Try again in a moment.' : r.why); }
     if(cost.quarx > 0n) await addWorld(env, 'quarx_consumed', Number(cost.quarx));
     return json({ok:true, now, cond: 100, repaired: true, paid: { bux: cost.bux.toString(), quarx: cost.quarx.toString() }});
+  }
+  if(p === '/api/build/brace' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
+    const b = await buildGet(env, me.uid, q.get('key') || '');
+    if(!b) return fail(404, 'No such building.');
+    if(b.status !== 'complete') return fail(409, 'Only a finished building can be braced.');
+    if(Number(b.braced_until || 0) > now) return json({ok:true, now, braced: false, bracedUntil: Number(b.braced_until)});
+    const cost = braceCost(b), until = now + BRACE_HOURS * 3600000, was = Number(b.braced_until || 0);
+    const took = await env.DB.prepare('UPDATE xl_builds SET braced_until = ?3, updated = ?4 WHERE uid = ?1 AND key = ?2 AND COALESCE(braced_until, 0) = ?5').bind(me.uid, b.key, until, now, was).run();
+    if(!took.meta.changes) return json({ok:true, now, braced: false, bracedUntil: until});
+    const r = await walletApply(env, me.uid, 'brace-' + b.key + '-' + now.toString(36), { bux: -cost }, null, { d: { bux: (-cost).toString() }, src: 'brace', key: b.key, t: buildTerritory(b) });
+    if(!r.ok || r.dup){ await env.DB.prepare('UPDATE xl_builds SET braced_until = ?3 WHERE uid = ?1 AND key = ?2 AND braced_until = ?4').bind(me.uid, b.key, was || null, until).run(); return fail(409, r.ok ? 'Try again in a moment.' : r.why); }
+    return json({ok:true, now, braced: true, bracedUntil: until, paid: { bux: cost.toString() }});
   }
   if(p === '/api/land/buy' && req.method === 'POST'){
     if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
@@ -738,6 +794,7 @@ async function api(req, env, url){
     return r.s === 200 ? json({ok:true, now, listing: r.listing}) : fail(r.s, r.why);
   }
   if(p === '/api/land/unlist' && req.method === 'POST'){
+    if(!rateOk(me.uid)) return fail(429, 'Too many changes at once. Slow down a little.');
     await env.DB.prepare('DELETE FROM xl_listings WHERE id = ?1 AND seller = ?2').bind(q.get('parcel') || '', me.uid).run();
     return json({ok:true, now});
   }
@@ -1001,10 +1058,15 @@ async function api(req, env, url){
       if(UNCLAIMABLE.test(id)) return fail(403, 'This land can never be claimed.');
       if(data.owner !== me.uid) return fail(403, 'A claim must name its own holder.');
       // r55: new land is bought through /api/land/buy; a direct claim is accepted only for land this citizen already paid for
-      // (or holds), for the original parcels an alpha citizen carried over, or for the Ximberland home of an r52-era Homax
+      // in full (or holds), or for the one Ximberland home of a Homax bought at its full price (r58: no longer for any
+      // operation that merely carries the right name, and no longer through the alpha import)
       const held = await env.DB.prepare("SELECT owner FROM xl_docs WHERE col = 'claims' AND id = ?1").bind(id).first();
-      if(!(held && held.owner === me.uid) && !(await opExists(env, me.uid, 'parcel-' + id)) && !(LAND[id] && !LAND[id].lot && await opExists(env, me.uid, 'import-alpha')) && !(/^XIM-R-\d\d$/.test(id) && await opExists(env, me.uid, 'homax-acquire')))
-        return fail(403, 'Buy this land first.');
+      if(!(held && held.owner === me.uid)){
+        const paidLand = LAND[id] && await paidOp(env, me.uid, 'parcel-' + id, LAND[id].price * UNIT);
+        const homaxHome = /^XIM-R-\d\d$/.test(id) && await paidOp(env, me.uid, 'homax-acquire', HOMAX_PRICE * UNIT)
+          && !(await env.DB.prepare("SELECT 1 FROM xl_docs WHERE col = 'claims' AND owner = ?1 AND id LIKE 'XIM-R-%'").bind(me.uid).first());
+        if(!paidLand && !homaxHome) return fail(403, 'Buy this land first.');
+      }
       const r = await env.DB.prepare('INSERT INTO xl_docs (col, id, data, owner, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(col, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at WHERE xl_docs.owner = excluded.owner')
         .bind(col, id, text, me.uid, now).run();
       if(!r.meta.changes) return fail(409, 'This parcel is already held by another citizen.');

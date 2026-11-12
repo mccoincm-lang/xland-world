@@ -1,5 +1,5 @@
 // Local stand-in for Cloudflare: runs src/worker.js with an in-memory SQLite database as D1.
-// Usage: node test/dev-server.mjs [port]
+// Usage: node test/dev-server.mjs [port]      (XLAND_SLOW=1 node test/dev-server.mjs 8790  for test/races.cjs)
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -29,15 +29,19 @@ function loadWorkerFresh() {
 }
 
 const sqlite = new DatabaseSync(":memory:");
+// XLAND_SLOW=1 makes every database call wait a millisecond, so requests sent together interleave as they do on the real
+// D1 database. Without it each request runs to completion and races can never show (test/races.cjs needs it).
+const lag = () => (process.env.XLAND_SLOW ? new Promise((r) => setTimeout(r, 1)) : null);
 const DB = {
   prepare(sql) {
     let args = [];
     const stmt = () => sqlite.prepare(sql);
     const api = {
       bind: (...a) => ((args = a), api),
-      first: async () => stmt().get(...args) ?? null,
-      all: async () => ({ results: stmt().all(...args) }),
+      first: async () => (await lag(), stmt().get(...args) ?? null),
+      all: async () => (await lag(), { results: stmt().all(...args) }),
       run: async () => {
+        await lag();
         const r = stmt().run(...args);
         return { meta: { changes: Number(r.changes) } };
       },
@@ -46,10 +50,12 @@ const DB = {
   },
 };
 // The weather bridge never leaves this machine in tests: a stand-in weather service reports a storm over FarmX's twin
-// (gusts of 72 km/h), a heatwave in Dubai (Xetropolitan, 46°C), a thunderstorm with light wind over Ixeland's twin, and calm
+// (gusts of 72 km/h), a heatwave in Dubai (Xetropolitan, 46°C), a thunderstorm with light wind over Ixeland's twin, heavy snow forecast
+// for Xalp's twin in three hours and heavy rain for FarmX's in two, and calm
 // weather everywhere else.
 const TWIN_ORDER = Object.keys(JSON.parse(readFileSync(root + "src/world.json", "utf8")).twins);
-const WEATHER_FETCH = async () => ({ ok: true, json: async () => TWIN_ORDER.map((t) => ({ current: { temperature_2m: t === "xetropolitan" ? 46 : 14, precipitation: 0, snowfall: 0, wind_speed_10m: 18, wind_gusts_10m: t === "farmx" ? 72 : 24, weather_code: t === "ixeland" ? 95 : 2 } })) });
+const hourISO = (h) => new Date(Math.floor(Date.now() / 3600000) * 3600000 + h * 3600000).toISOString().slice(0, 16);
+const WEATHER_FETCH = async () => ({ ok: true, json: async () => TWIN_ORDER.map((t) => ({ hourly: { time: [0, 1, 2, 3, 4].map(hourISO), temperature_2m: [1, 1, 1, 1, 1], precipitation: [0, 0, t === "farmx" ? 8 : 0, 0, 0], snowfall: [0, 0, 0, t === "xalp" ? 2.4 : 0, 0], wind_gusts_10m: [9, 9, 9, 9, 9], weather_code: [2, 2, 2, 2, 2] }, current: { temperature_2m: t === "xetropolitan" ? 46 : 14, precipitation: 0, snowfall: 0, wind_speed_10m: 18, wind_gusts_10m: t === "farmx" ? 72 : 24, weather_code: t === "ixeland" ? 95 : 2 } })) });
 const env = { DB, ADMIN_KEY: "founder-test-key-1234567890", XLAND_DEV: "1", WEATHER_FETCH };   // XLAND_DEV enables /api/dev/credit for the test scripts only
 
 createServer(async (req, res) => {
