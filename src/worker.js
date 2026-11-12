@@ -5,6 +5,7 @@
 import HTML from "../dist/index.html";
 import FORGE from "../dist/forge.html";
 import WORLD from "./world.json";
+import ICONS from "./icons.json";
 
 const SEC = {
   'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
@@ -388,9 +389,9 @@ async function landListings(env){
    100 − wear since the last repair − the damage of every hazard that began since then. Open-Meteo is free for
    non-commercial use; a commercial launch needs their paid plan or another provider. */
 const HAZ = WORLD.hazards, TWINS = WORLD.twins;
-const HAZARD_HOURS = 6;
+const HAZARD_HOURS = 6, HAZARD_LULL_HOURS = 12;
 const HAZARD_RULES = [   // first match wins; thresholds for one hour, metric units
-  { type: 'storm', test: w => w.gust >= 60 || [95, 96, 99].includes(w.code), read: w => `gusts of ${Math.round(w.gust)} km/h` },
+  { type: 'storm', test: w => w.gust >= 60 || [95, 96, 99].includes(w.code), read: w => w.gust >= 60 ? `gusts of ${Math.round(w.gust)} km/h` : 'a thunderstorm' },
   { type: 'flood', test: w => w.precip >= 6, read: w => `${w.precip.toFixed(1)} mm of rain in the last hour` },
   { type: 'snow',  test: w => w.snow >= 1.5, read: w => `${w.snow.toFixed(1)} cm of snow in the last hour` },
   { type: 'heat',  test: w => w.temp >= 44, read: w => `${Math.round(w.temp)}°C` }
@@ -399,7 +400,9 @@ const HEAT_LANDS = ['xahara', 'xasteland', 'farmx', 'xetropolitan'];
 async function hazardsSince(env, since){ const { results } = await env.DB.prepare('SELECT * FROM xl_hazards WHERE ends > ?1 ORDER BY start').bind(since).all(); return results; }
 const hazardOut = h => ({ id: h.id, type: h.type, territory: h.territory, start: Number(h.start), end: Number(h.ends), source: h.source, where: h.place, reading: h.reading });
 async function raiseHazard(env, h){
-  const live = await env.DB.prepare('SELECT * FROM xl_hazards WHERE territory = ?1 AND type = ?2 AND ends > ?3').bind(h.territory, h.type, h.start).first();
+  // One spell of weather is one hazard: a new reading of the same kind within HAZARD_LULL_HOURS of the last one ending
+  // extends it, so a gusty day damages a building once, not once for every lull in the wind.
+  const live = await env.DB.prepare('SELECT * FROM xl_hazards WHERE territory = ?1 AND type = ?2 AND ends > ?3 ORDER BY ends DESC').bind(h.territory, h.type, h.start - (h.source === 'real' ? HAZARD_LULL_HOURS * 3600000 : 0)).first();
   if(live){ await env.DB.prepare('UPDATE xl_hazards SET ends = MAX(ends, ?2), reading = ?3 WHERE id = ?1').bind(live.id, h.ends, h.reading || live.reading).run(); return null; }
   await env.DB.prepare('INSERT OR IGNORE INTO xl_hazards (id, type, territory, start, ends, source, place, reading) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)').bind(h.id, h.type, h.territory, h.start, h.ends, h.source, h.place || null, h.reading || null).run();
   return h;
@@ -1065,6 +1068,15 @@ export default {
     if (url.pathname === '/forge')
       return new Response(FORGE, {headers:{'content-type':'text/html; charset=utf-8', 'cache-control':'no-store', 'x-robots-tag':'noindex, nofollow', ...SEC,
         'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
+    // Install to the home screen (r58): the web app manifest and its icons, drawn from Xland's own wordmark.
+    if (url.pathname === '/manifest.webmanifest')
+      return new Response(JSON.stringify({ name: 'Xland', short_name: 'Xland', description: 'A living civilization of ten territories.', start_url: '/', scope: '/', display: 'standalone', orientation: 'any',
+        background_color: '#0A1022', theme_color: '#0A1022', categories: ['social', 'games'],
+        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }, { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }] }),
+        { headers: { 'content-type': 'application/manifest+json', 'cache-control': 'public, max-age=3600' } });
+    { const ic = { '/icon-192.png': ICONS['192'], '/icon-512.png': ICONS['512'], '/icon-maskable-512.png': ICONS.maskable512, '/apple-touch-icon.png': ICONS['192'], '/favicon.ico': ICONS['192'] }[url.pathname];
+      if (ic) return new Response(Uint8Array.from(atob(ic), c => c.charCodeAt(0)), { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
+      if (url.pathname === '/icon.svg') return new Response(ICONS.svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' } }); }
     if (url.pathname === '/robots.txt') return new Response('User-agent: *\nAllow: /\nDisallow: /forge\n', {headers:{'content-type':'text/plain'}});
     return Response.redirect(url.origin + '/', 302);
   },

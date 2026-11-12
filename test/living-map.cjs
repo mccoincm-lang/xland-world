@@ -75,6 +75,8 @@ const world = require("../src/world.json"), LAND = Object.fromEntries(world.land
   const wr = (await api(A, "GET", "/world")).body.living;
   check("The world report carries hazards and live twin weather", wr && wr.weather.xetropolitan && wr.weather.xetropolitan.temp === 46 && wr.hazards.some(h => h.source === "real"), JSON.stringify(wr && wr.weather.xetropolitan));
   check("Heat in Dubai becomes a heatwave in Xetropolitan", wr.hazards.some(h => h.type === "heat" && h.territory === "xetropolitan"));
+  check("A thunderstorm with light wind is described as one, not by its gusts", wr.hazards.some(h => h.territory === "ixeland" && h.type === "storm" && h.reading === "a thunderstorm"), JSON.stringify(wr.hazards.filter(h => h.territory === "ixeland").map(h => h.reading)));
+  r = await api(A, "POST", "/world/refresh", null, FOUNDER); check("The same spell of weather read again raises nothing new", r.status === 200 && (r.body.raised || []).length === 0, JSON.stringify(r.body.raised));
   await api(A, "POST", "/hazard/raise?type=heat&t=farmx", null, FOUNDER);
   r = await api(A, "POST", "/farm/start?kind=vegiex");
   check("A heatwave in FarmX lowers a harvest started there (12 → 8)", r.status === 200 && r.body.out === 8, err(r) + " out=" + r.body.out);
