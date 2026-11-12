@@ -2528,7 +2528,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
     const base=r.people||(id==='aquax'?'Water areas':'Locked reserve'); sp.textContent=regionNotes[id]?`${base} · ${regionNotes[id]}`:base; } }
   function homeDist(){ const a=Math.max(.45,(cssW*(1-Math.abs(shift)*.5))/cssH); return Math.max(90,Math.min(300,54*K/(Math.tan(fov/2)*a)*(a<1?.8:1))); }
-  function setHome(instant){ Object.assign(goal,{tx:0,ty:0,tz:mode==='backdrop'?0:5,pitch:mode==='backdrop'?.6:(cssW<cssH?.78:.9),dist:homeDist()*(mode==='backdrop'?1.04:1)}); if(instant) Object.assign(cam,goal); }
+  function setHome(instant){ Object.assign(goal,{tx:0,ty:0,tz:mode==='backdrop'?0:(isSmall()?18:5),pitch:mode==='backdrop'?.6:(cssW<cssH?.78:.9),dist:homeDist()*(mode==='backdrop'?1.04:1)}); if(instant) Object.assign(cam,goal); }
   function flyTo(id,instant){
     if(!built) return; if(!id){ setHome(instant); return; }
     const a=anchors[id]; if(!a) return;
@@ -2945,7 +2945,7 @@ function viewWorld(){
       <div class="scard" id="scard" ${r?'':'hidden'}>${ui.parcel&&PBY[ui.parcel]?scardParcel(PBY[ui.parcel]):ui.place?scardPlace(PL[ui.place]):r?scard(r):''}</div>
     </div>
     <div class="map-tools glass"><button class="toggle" data-act="deps" aria-pressed="${ui.deps}"><span class="track" aria-hidden="true"></span>Connections</button><button class="toggle" data-act="flat" aria-pressed="${ui.flat}"><span class="track" aria-hidden="true"></span>Flat map</button><button class="link link-muted" data-act="deselect">Whole world</button></div>
-    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build .</p>
+    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build ${BUILD}.</p>
     <div class="world-events">${eventBanner()}</div>
     <aside class="world-panel glass" id="world-panel" aria-live="polite">${ui.parcel&&PBY[ui.parcel]?panelParcel(PBY[ui.parcel]):ui.place?panelPlace(PL[ui.place]):r?panelDetail(r):panelList()}</aside>
   </section>`;

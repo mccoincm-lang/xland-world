@@ -1041,6 +1041,17 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .wx-chip:hover{border-color:#F2A65A}
 .forecast{margin:.7rem 0;padding:.6rem .8rem;border-left:3px solid var(--gold);background:var(--gold-soft);font-size:.92rem;color:var(--text)}
 .brace-line{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.6rem 0}
+/* r58: Live from Earth on the landing page */
+.live-world{padding-top:2.2rem;padding-bottom:.6rem}
+.lw-head{max-width:46rem;margin-bottom:1.2rem}.lw-head .lede{margin-top:.6rem}
+.lw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:.6rem}
+.lw-card{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"e m r" "s s s";gap:.2rem .7rem;align-items:center;padding:.75rem .9rem;text-decoration:none;color:var(--text);border:1px solid var(--line);border-left:3px solid hsl(var(--h) 50% 50%);background:linear-gradient(90deg,hsl(var(--h) 45% 40% / .09),transparent 70%)}
+.lw-card:hover{border-color:var(--gold)}
+.lw-card .xl-emblem{grid-area:e}
+.lw-main{grid-area:m;display:grid;min-width:0}.lw-main b{font-size:.98rem}.lw-main span{font-size:.8rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lw-read{grid-area:r;display:grid;text-align:right}.lw-read b{font:600 1.25rem/1.1 var(--font-display,Georgia,serif)}.lw-read span{font-size:.78rem;color:var(--muted)}
+.lw-state{grid-area:s;font-size:.82rem;color:var(--cyan);padding-top:.25rem;border-top:1px solid var(--line);margin-top:.3rem}
+.lw-hot .lw-state{color:var(--warn);font-weight:600}
 
 </style>
 </head>
@@ -1982,8 +1993,9 @@ async function refreshWorld(){ if(!serverMode||!serverBE) return; const hz0=JSON
   if(JSON.stringify((world.living||{}).hazards||[])!==hz0){ if(damageNotices()) save(); livingChanged(); syncBuilds(); }
   const {route,arg}=parse(); if(route==='place' && ['quarx','vaults','banx'].includes(arg)){ const a=$('#activity'); if(a) a.innerHTML=activity(PL[arg]); }
   if(route==='founder' && social.isOwner) render();
-  const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML()+worldMarketHTML(); }
-function worldPage(route,arg){ return (route==='place'&&['quarx','vaults','banx','bazaar','fields'].includes(arg))||route==='economy'||route==='founder'||route==='world'||route==='region'||route==='parcel'||route==='lab'; }
+  const ew=$('#econ-world'); if(ew) ew.innerHTML=worldMiningHTML()+worldReserveHTML()+worldMarketHTML();
+  const lw=$('#live-world'); if(lw) lw.innerHTML=liveWorldHTML(); }
+function worldPage(route,arg){ return route==='home'||(route==='place'&&['quarx','vaults','banx','bazaar','fields'].includes(arg))||route==='economy'||route==='founder'||route==='world'||route==='region'||route==='parcel'||route==='lab'; }
 const fmtU = (u, dp=0) => (Number(u)/Number(UNIT)).toLocaleString('en-US',{maximumFractionDigits:dp});
 function worldMiningHTML(){ if(!world) return serverMode?'<p class="meta" style="margin-top:.8rem">Reading the world ledger…</p>':'';
   const q=world.quarx, pct=q.mined/q.minable*100;
@@ -2870,7 +2882,7 @@ c+=(hs(vU*uR+fract(uTm*7.13)*113.)-.5)*.014;o=vec4(c,1.);}`;
   function setRegionNotes(notes){ regionNotes=notes||{}; for(const id in labelEls){ const r=R[id], sp=labelEls[id].querySelector('span'); if(!sp) continue;
     const base=r.people||(id==='aquax'?'Water areas':'Locked reserve'); sp.textContent=regionNotes[id]?`${base} · ${regionNotes[id]}`:base; } }
   function homeDist(){ const a=Math.max(.45,(cssW*(1-Math.abs(shift)*.5))/cssH); return Math.max(90,Math.min(300,54*K/(Math.tan(fov/2)*a)*(a<1?.8:1))); }
-  function setHome(instant){ Object.assign(goal,{tx:0,ty:0,tz:mode==='backdrop'?0:5,pitch:mode==='backdrop'?.6:(cssW<cssH?.78:.9),dist:homeDist()*(mode==='backdrop'?1.04:1)}); if(instant) Object.assign(cam,goal); }
+  function setHome(instant){ Object.assign(goal,{tx:0,ty:0,tz:mode==='backdrop'?0:(isSmall()?18:5),pitch:mode==='backdrop'?.6:(cssW<cssH?.78:.9),dist:homeDist()*(mode==='backdrop'?1.04:1)}); if(instant) Object.assign(cam,goal); }
   function flyTo(id,instant){
     if(!built) return; if(!id){ setHome(instant); return; }
     const a=anchors[id]; if(!a) return;
@@ -3091,6 +3103,14 @@ function renderChrome(route){
 }
 
 /* ---------------- Views ---------------- */
+/* The landing page's proof that the world is alive: each territory with its twin on Earth, the weather read there in the
+   last hour, and what that weather is doing in Xland right now. Shown once xland.world has a reading. */
+function liveWorldHTML(){ const L=serverMode&&world&&world.living?world.living:null; if(!L||!L.weather||!Object.keys(L.weather).length) return '';
+  const hz=liveHazards(), rows=REGIONS.filter(r=>TWINS[r.id]&&L.weather[r.id]).map(r=>{ const w=L.weather[r.id], h=hz.filter(x=>x.territory===r.id), f=forecastFor(r.id);
+    return `<a class="lw-card${h.length?' lw-hot':''}" href="#/region/${r.id}" style="--h:${r.geo.hue}">${emblem(r.id,34)}<span class="lw-main"><b>${esc(r.name)}</b><span>${esc(TWINS[r.id].name)}</span></span><span class="lw-read"><b>${Math.round(w.temp)}°C</b><span>${Math.round(w.wind)} km/h</span></span>
+      <span class="lw-state">${h.length?h.map(x=>esc(HAZARDS[x.type].name)).join(', ')+' now':f?`${esc(HAZARDS[f.type].name)} forecast, ${fmtWhen(f.at)}`:'Calm'}</span></a>`; });
+  if(!rows.length) return '';
+  return `<section class="page live-world"><div class="lw-head"><h2 class="display">Live from Earth</h2><p class="lede">Every territory has a twin on Earth. Its real weather, read each hour, becomes weather in Xland: storms damage buildings, heat thins harvests.${L.weatherAt?` Last reading ${fmtClock(L.weatherAt)}.`:''}</p></div><div class="lw-grid">${rows.join('')}</div></section>`; }
 function viewLanding(){
   return `<section class="hero">
     <div class="hero-map scene" data-scene="backdrop" aria-hidden="true"></div>
@@ -3105,6 +3125,7 @@ function viewLanding(){
     </div>
     <nav class="atlas" aria-label="The ten territories">${REGIONS.map(r=>`<a href="#/region/${r.id}" style="--h:${r.geo.hue}">${emblem(r.id,26)}${esc(r.name)}</a>`).join('')}</nav>
   </section>
+  <div id="live-world">${liveWorldHTML()}</div>
   ${divider()}
   <section class="page band">
     <div class="band-grid">
@@ -3278,7 +3299,7 @@ function viewWorld(){
       <div class="scard" id="scard" ${r?'':'hidden'}>${ui.parcel&&PBY[ui.parcel]?scardParcel(PBY[ui.parcel]):ui.place?scardPlace(PL[ui.place]):r?scard(r):''}</div>
     </div>
     <div class="map-tools glass"><button class="toggle" data-act="deps" aria-pressed="${ui.deps}"><span class="track" aria-hidden="true"></span>Connections</button><button class="toggle" data-act="flat" aria-pressed="${ui.flat}"><span class="track" aria-hidden="true"></span>Flat map</button><button class="link link-muted" data-act="deselect">Whole world</button></div>
-    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build .</p>
+    <p class="map-note">${ui.flat?'':'Tap a land or a name above it. Zoom in to see buildings, institutions and land parcels. '}Layout, parcels and visuals are an illustrative interpretation, not canon. Build ${BUILD}.</p>
     <div class="world-events">${eventBanner()}</div>
     <aside class="world-panel glass" id="world-panel" aria-live="polite">${ui.parcel&&PBY[ui.parcel]?panelParcel(PBY[ui.parcel]):ui.place?panelPlace(PL[ui.place]):r?panelDetail(r):panelList()}</aside>
   </section>`;
