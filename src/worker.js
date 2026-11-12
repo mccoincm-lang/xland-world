@@ -445,6 +445,7 @@ async function weatherBridge(env, now){
     const w = { temp: +c.temperature_2m || 0, precip: +c.precipitation || 0, snow: +c.snowfall || 0, wind: +c.wind_speed_10m || 0, gust: +c.wind_gusts_10m || 0, code: +c.weather_code || 0, at: now };
     // the first hour of the next twelve whose forecast would raise a hazard here, so citizens can brace in time
     const hr = (data[i] || {}).hourly;
+    w.fc = hr && Array.isArray(hr.time) ? hr.time.length : 0;   // hours of forecast read (0 = the service gave none)
     if(hr && Array.isArray(hr.time)) for(let k = 0; k < hr.time.length; k++){ const at = Date.parse(hr.time[k] + ':00Z'); if(!(at > now + 1800000)) continue;
       const fw = { temp: +(hr.temperature_2m || [])[k] || 0, precip: +(hr.precipitation || [])[k] || 0, snow: +(hr.snowfall || [])[k] || 0, gust: +(hr.wind_gusts_10m || [])[k] || 0, code: +(hr.weather_code || [])[k] || 0 };
       const fr = HAZARD_RULES.find(h => h.test(fw)); if(!fr || (fr.type === 'heat' && !HEAT_LANDS.includes(t))) continue;
