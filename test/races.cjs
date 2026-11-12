@@ -1,6 +1,7 @@
 // r58: holes found by an adversarial review of the land and building rules, and requests sent at the same moment.
 // Needs the slow dev server, where database calls interleave as on the real D1:
-//   XLAND_SLOW=1 node test/dev-server.mjs 8790 &   then   node test/races.cjs 8790      (about two minutes)
+//   XLAND_SLOW=1 node test/dev-server.mjs 8790 &   then   node test/races.cjs 8790      (about two minutes; start a fresh
+//   server for each run, and run wallet-attacks.cjs before living-map.cjs, which leaves a heatwave over FarmX)
 const port = process.argv[2] || 8790, base = `http://localhost:${port}/api`;
 const api = async (key, method, path, body, extra) => { const r = await fetch(base + path, { method, headers: { "x-xland-key": key, "content-type": "application/json", ...(extra || {}) }, body: body ? JSON.stringify(body) : undefined }); let j = {}; try { j = await r.json(); } catch {} return { status: r.status, body: j }; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));

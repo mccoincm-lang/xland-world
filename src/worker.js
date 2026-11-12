@@ -435,7 +435,9 @@ async function weatherBridge(env, now){
   const ids = Object.keys(TWINS), f = env.WEATHER_FETCH || fetch;
   const q = new URLSearchParams({ latitude: ids.map(i => TWINS[i].lat).join(','), longitude: ids.map(i => TWINS[i].lon).join(','),
     current: 'temperature_2m,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,weather_code', hourly: 'temperature_2m,precipitation,snowfall,wind_gusts_10m,weather_code', forecast_hours: '12', wind_speed_unit: 'kmh', timezone: 'UTC' });
-  const r = await f('https://api.open-meteo.com/v1/forecast?' + q.toString(), { headers: { 'user-agent': 'xland.world weather bridge' } });
+  let r = await f('https://api.open-meteo.com/v1/forecast?' + q.toString(), { headers: { 'user-agent': 'xland.world weather bridge' } });
+  // the forecast is an extra: if the service refuses the longer request, the hourly reading must still happen
+  if(!r.ok){ q.delete('hourly'); q.delete('forecast_hours'); r = await f('https://api.open-meteo.com/v1/forecast?' + q.toString(), { headers: { 'user-agent': 'xland.world weather bridge' } }); }
   if(!r.ok) throw new Error('weather service ' + r.status);
   let data = await r.json(); if(!Array.isArray(data)) data = [data];
   const raised = [];
