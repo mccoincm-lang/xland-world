@@ -352,3 +352,34 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
 .lw-read{grid-area:r;display:grid;text-align:right}.lw-read b{font:600 1.25rem/1.1 var(--font-display,Georgia,serif)}.lw-read span{font-size:.78rem;color:var(--muted)}
 .lw-state{grid-area:s;font-size:.82rem;color:var(--cyan);padding-top:.25rem;border-top:1px solid var(--line);margin-top:.3rem}
 .lw-hot .lw-state{color:var(--warn);font-weight:600}
+
+/* r59: shorter arrival */
+.hx-why{margin:.6rem 0 1.2rem}
+.hx-sim{display:flex;gap:.6rem;align-items:flex-start;margin-top:1.4rem;padding-top:1rem;border-top:1px solid color-mix(in srgb,currentColor 14%,transparent)}
+.hx-sim svg{flex:0 0 1.2rem;width:1.2rem;height:1.2rem;margin-top:.1rem;opacity:.75}
+.hero-note{margin-top:.9rem;opacity:.85}
+@media (max-width:700px){
+  .hx-stick{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom,0px));z-index:3;margin:0 -.6rem;padding:.8rem .6rem;background:var(--bg-2);border-top:1px solid var(--line)}
+  .hotex{padding-top:1rem;place-items:start center}
+  .hotex .passport dl{row-gap:.3rem}
+}
+
+.pp-more{display:flex;flex-wrap:wrap;align-items:center;gap:.8rem 1rem;margin-top:1.6rem}
+@media (max-width:700px){
+  .action-bar{padding:.6rem .8rem;gap:.3rem .8rem}
+  .action-bar>.meta{display:none}
+  .action-bar .btn{min-height:44px;padding:.5rem 1.1rem}
+}
+/* r59: on wide screens the first-steps guide is one slim line at the bottom, not a card over the page */
+@media (min-width:821px){
+  #guide{left:50%;transform:translateX(-50%);bottom:.8rem;width:max-content;max-width:min(860px,calc(100vw - 2rem))}
+  .guide{display:flex;align-items:center;gap:.4rem 1rem;padding:.5rem .6rem .5rem 1rem}
+  .guide-top{display:contents}
+  .guide-top>.meta{order:0;white-space:nowrap}
+  .guide>p{order:1;font-size:.92rem;line-height:1.35;margin:0}
+  .guide>.btn{order:2;flex:none;white-space:nowrap;min-height:36px !important;padding:.35rem 1.3rem !important}
+  .toast{bottom:calc(1.4rem + var(--guide-h,0px) + env(safe-area-inset-bottom,0px))}
+  .guide-top>span:last-child{order:3;white-space:nowrap;font-size:.85rem}
+  .guide-steps{display:none}
+}
+@media (min-width:821px){ .pp-checks{columns:2;column-gap:2.4rem} .pp-checks li{break-inside:avoid} }

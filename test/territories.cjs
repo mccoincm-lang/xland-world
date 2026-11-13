@@ -18,7 +18,6 @@ async function citizen(b, name, vp) {
   await ctx.addInitScript(() => { try { localStorage.setItem("xland.introSeen", "1"); } catch (e) {} });
   const p = await ctx.newPage(); p.setDefaultTimeout(120000); p.on("pageerror", (e) => console.log(name, "PAGE ERROR", e.message));
   await p.goto(base + "#/hotex"); await p.waitForTimeout(1500);
-  for (const s of ['[data-act="hx-next"]', '[data-act="hx-next"]']) { await tap(p, s); await p.waitForTimeout(300); }
   await p.fill("#hx-handle", name); await tap(p, '[data-act="hx-name"]'); await p.waitForTimeout(300);
   await tap(p, '[data-act="hx-paths"]'); await p.waitForTimeout(300);
   await p.evaluate(() => document.querySelector('[data-act="hx-issue"]').click()); await p.waitForTimeout(1200);

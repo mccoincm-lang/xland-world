@@ -16,7 +16,6 @@ const api = async (key, method, path) => { const r = await fetch(base + "/api" +
   const tap = (s) => p.evaluate((x) => { const el = document.querySelector(x); if (el) el.click(); return !!el; }, s);
   const go = async (h, ms = 900) => { await p.evaluate((x) => (location.hash = x), h); await p.waitForTimeout(ms); };
   await p.goto(base + "/#/hotex"); await p.waitForTimeout(1500);
-  await tap('[data-act="hx-next"]'); await p.waitForTimeout(200); await tap('[data-act="hx-next"]'); await p.waitForTimeout(200);
   await p.fill("#hx-handle", "Miner"); await tap('[data-act="hx-name"]'); await p.waitForTimeout(200); await tap('[data-act="hx-paths"]'); await p.waitForTimeout(200);
   await tap('[data-act="hx-issue"]'); await p.waitForTimeout(1500);
   const key = await p.evaluate(() => localStorage.getItem("xland.key"));

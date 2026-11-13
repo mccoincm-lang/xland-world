@@ -11,7 +11,6 @@ async function citizen(b, name, vp) {
   const p = await ctx.newPage();
   p.on("pageerror", (e) => console.log(name, "PAGE ERROR", e.message));
   await p.goto(base + "#/hotex"); await p.waitForTimeout(1500);
-  for (const s of ['[data-act="hx-next"]', '[data-act="hx-next"]']) { await p.locator(s).click(); await p.waitForTimeout(200); }
   await p.fill("#hx-handle", name); await p.locator('[data-act="hx-name"]').click(); await p.waitForTimeout(200);
   await p.locator('[data-act="hx-paths"]').click(); await p.waitForTimeout(200);
   await p.evaluate(() => document.querySelector("[data-act=\"hx-issue\"]").click()); await p.waitForTimeout(800);

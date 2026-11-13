@@ -53,9 +53,6 @@ const sizes = { desk: { width: 1440, height: 900 }, phone: { width: 390, height:
       // Hotex: arrival → orientation → name → paths → passport
       await go("#/hotex");
       await shot("hotex-1");
-      await act('[data-act="hx-next"]');
-      await shot("hotex-2");
-      await act('[data-act="hx-next"]');
       await p.fill("#hx-handle", "quarx_walker");
       await act('[data-act="hx-name"]');
       await act('[data-act="hx-path"][data-path="Builder"]');

@@ -26,7 +26,6 @@ const ROUTES = ["", "hotex", "world", "wallet", "quests", "chronicle", "profile"
       await p.goto(base); await p.waitForTimeout(1500);
       // Become a Hotex guest
       await p.evaluate(() => (location.hash = "#/hotex")); await p.waitForTimeout(300);
-      for (const s of ['[data-act="hx-next"]', '[data-act="hx-next"]']) { await p.click(s); await p.waitForTimeout(150); }
       await p.fill("#hx-handle", "audit_" + sz + theme); await p.click('[data-act="hx-name"]'); await p.waitForTimeout(150);
       await p.click('[data-act="hx-paths"]'); await p.waitForTimeout(150);
       await p.click('[data-act="hx-issue"]'); await p.waitForTimeout(500);

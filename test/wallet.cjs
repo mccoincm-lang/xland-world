@@ -18,7 +18,6 @@ async function citizen(b, name, init) {
   return p;
 }
 async function passport(p, name) {
-  for (const s of ['[data-act="hx-next"]', '[data-act="hx-next"]']) { await tap(p, s); await p.waitForTimeout(300); }
   await p.fill("#hx-handle", name); await tap(p, '[data-act="hx-name"]'); await p.waitForTimeout(300);
   await tap(p, '[data-act="hx-paths"]'); await p.waitForTimeout(300); await tap(p, '[data-act="hx-issue"]'); await p.waitForTimeout(4000);
 }

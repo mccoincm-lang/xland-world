@@ -577,8 +577,8 @@ div.pl{cursor:default}
 .toast::before{content:"";width:8px;height:8px;flex:none;transform:rotate(45deg);background:var(--gold)}
 footer.foot{padding:2rem clamp(1.1rem,4vw,2.5rem) 6rem;max-width:1180px;margin:0 auto;font-size:.8rem;color:var(--faint)}
 
-.fade-in{animation:fadeIn .55s var(--ease)}
-@keyframes fadeIn{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:none}}
+.fade-in{animation:fadeIn .3s var(--ease)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 
 /* Responsive */
 @media (max-width:980px){
@@ -1140,8 +1140,8 @@ const LAWS = {
   aquax:{action:'Request a home in Aquax', law:'Aquax holds a single residence, The House on the River, and it is not available.', why:'Aquax is exceptional by canon and is not a normal residential zone.'}
 };
 const ASSETS = [
- {id:'bux', sym:'BuX', type:'Primary currency', domain:'XLAND-wide', use:'Payments, deposits, rewards and settlement.', how:'Payments and rewards. Real issuance is TBD.'},
- {id:'lex', sym:'Lex', type:'Governance / legislative token', domain:'XLAND government', use:'Votes, legislation and permission for special buildings.', how:'How Lex is obtained is TBD in the canon.'},
+ {id:'bux', sym:'BuX', type:'Primary currency', domain:'XLAND-wide', use:'Payments, deposits, rewards and settlement.', how:'Earned by selling what you produce and by missions. Practice money for now.'},
+ {id:'lex', sym:'Lex', type:'Governance / legislative token', domain:'XLAND government', use:'Votes, legislation and permission for special buildings.', how:'Earned through civic life. The exact rule is still being decided.'},
  {id:'vegiex', sym:'VegieX', type:'Agricultural token', domain:'FarmX', use:'Food economy and Xetropolitan living demand.', how:'Produced at the FarmX fields. Trade it at FarmXSwap or Forgex.'},
  {id:'livestox', sym:'LivestoX', type:'Livestock token', domain:'FarmX', use:'Food economy and Xetropolitan living demand.', how:'Raised at the FarmX fields. Trade it at FarmXSwap or Forgex.'},
  {id:'quarx', sym:'QuarX', type:'Strategic resource', domain:'Xalp', use:'Special buildings, Xky and builders.', how:'Extracted in Xalp. Consumed by construction, tradable at Forgex.'}
@@ -1660,7 +1660,7 @@ let remote = null, saveTimer = null, accountLinked = false;
 /* ---------------- Social layer: shared citizens, ParX conversation, parcel claims ----------------
    Shared paths: citizens/<id> (each citizen's public card, written only by them), posts/<id> (their ParX messages),
    claims/<parcel> (first-come parcel ownership across all citizens). Platform identity is never shown; only in-world handles. */
-const BUILD = 'r58';
+const BUILD = 'r59';
 const social = { db:null, me:null, isOwner:false, citizens:[], posts:{}, claims:{}, shops:{}, ready:false, writable:true, lastPost:0, pubTimer:null };
 const ONLINE_MS = 10*60000;
 const clonePlain = o => JSON.parse(JSON.stringify(o||{}));
@@ -2763,11 +2763,12 @@ function viewLanding(){
     <div class="hero-veil" aria-hidden="true"></div>
     <div class="hero-copy">
       <h1 class="display hero-title"><span>Xland was not created.</span><span>It was remembered.</span></h1>
-      <p class="lede hero-lede">A living civilization of ten territories. Geography shapes its economy, identity and governance, and every land carries both an advantage and a cost.</p>
+      <p class="lede hero-lede">A living world of ten territories. Take a passport, farm and mine, trade with other citizens, buy land and build on it. Real weather on Earth reaches your buildings.</p>
       <div class="btn-row hero-cta">
-        ${state.passport ? `<a class="btn btn-gold" href="#/world">Return to the world</a>` : `<a class="btn btn-gold" href="#/hotex">Enter through Hotex</a>`}
-        <a class="link link-muted" href="#/world">Explore the map first</a><button class="link link-muted" data-act="intro-replay">The Great Arrival</button>
+        ${state.passport ? `<a class="btn btn-gold" href="#/world">Return to the world</a>` : `<a class="btn btn-gold" href="#/hotex">Get your free passport</a>`}
+        <a class="link link-muted" href="#/world">${state.passport?'Open the map':'Look at the map first'}</a><button class="link link-muted" data-act="intro-replay">Watch the story</button>
       </div>
+      ${state.passport?'':'<p class="meta hero-note">Takes a minute. Simulated for now: no real money, no wallet to connect.</p>'}
     </div>
     <nav class="atlas" aria-label="The ten territories">${REGIONS.map(r=>`<a href="#/region/${r.id}" style="--h:${r.geo.hue}">${emblem(r.id,26)}${esc(r.name)}</a>`).join('')}</nav>
   </section>
@@ -2799,36 +2800,25 @@ function viewLanding(){
 let hx = {step:0, handle:'', paths:[], affinity:''};
 function viewHotex(){
   if(state.passport){ return `<section class="hotex"><div class="hotex-card glass fade-in"><h1 class="display">You already hold a passport</h1><p class="lede">Welcome back, ${esc(state.handle)}. Hotex is for arrivals; your place is in the world now.</p><div class="btn-row" style="margin-top:2rem"><a class="btn btn-primary" href="#/world">Go to the world</a></div></div></section>`; }
-  const names=['Arrival','Orientation','Your name','Your paths','Passport'];
+  const names=['Your name','Your interests','Passport'];
   const bar = names.map((_,i)=>`<b class="${i<hx.step?'done':i===hx.step?'now':''}"></b>${i<names.length-1?`<i class="${i<hx.step?'done':''}"></i>`:''}`).join('');
   let body='';
   if(hx.step===0){
-    body=`<h1 class="display">Welcome to Hotex</h1>
-    <p class="meta" style="font-style:italic;margin-bottom:.8rem">Xland was not created. It was remembered. Travelers enter through Hotex and earn their way to citizenship.</p>
-    <p class="lede">Every outsider enters Xland through this lounge. While you are here you hold a temporary visitor status. Leave with a passport, and the world starts keeping your story.</p>
-    <div class="btn-row" style="margin-top:2.2rem"><button class="btn btn-primary" data-act="hx-next">Begin orientation</button><a class="link link-muted" href="#/world">Look around first</a></div>`;
-  } else if(hx.step===1){
-    body=`<h1 class="display">Three things to know</h1>
-    <div class="facts">
-      <div>${ICON.scales}<p><b>Every land has a cost.</b><br><span class="meta">Ten territories, each with an advantage and a constraint. Where you stand changes what things cost.</span></p></div>
-      <div>${ICON.door}<p><b>Everything here is simulated.</b><br><span class="meta">No real tokens, no real money, no real ownership. This is a laboratory for how Xland should behave.</span></p></div>
-      <div>${ICON.book}<p><b>Your Chronicle remembers.</b><br><span class="meta">Arrivals, first visits and milestones become a lasting personal history.</span></p></div>
-    </div>
-    <div class="btn-row"><button class="btn btn-primary" data-act="hx-next">Continue</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
-  } else if(hx.step===2){
     body=`<h1 class="display">What should Xland call you?</h1>
-    <div class="field"><label for="hx-handle">Xlander handle</label>
+    <p class="meta hx-why">Hotex is the arrivals lounge. A name is all it takes to get a passport, a wallet and a place in the world.</p>
+    <div class="field"><label for="hx-handle">Your name in Xland</label>
       <input class="input" id="hx-handle" maxlength="24" dir="auto" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" value="${esc(hx.handle)}" placeholder="e.g. quarx_walker">
       <span class="hint" id="hx-hint">2 to 24 characters. Any language works.</span></div>
-    <div class="btn-row" style="margin-top:1.4rem"><button class="btn btn-primary" data-act="hx-name">Continue</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
-  } else if(hx.step===3){
-    body=`<h1 class="display">Where are you drawn?</h1>
-    <p class="meta" style="margin-top:.6rem">Choose up to three paths. They are interests, not classes, and you can change them later.</p>
-    <div class="tiles" role="group" aria-label="Paths">${PATHS.map(([p,d])=>`<button class="tile" data-act="hx-path" data-path="${p}" aria-pressed="${hx.paths.includes(p)}"><b>${p}</b><span>${d}</span></button>`).join('')}</div>
-    <div class="field" style="margin-top:0"><label for="hx-aff">Home affinity</label>
+    <div class="btn-row" style="margin-top:1.2rem"><button class="btn btn-primary" data-act="hx-name">Continue</button><a class="link link-muted" href="#/world">Look around first</a></div>
+    <p class="meta hx-sim">${ICON.door}<span>Free, and simulated for now: no real money, no real tokens, nothing to connect.</span></p>`;
+  } else if(hx.step===1){
+    body=`<h1 class="display">What draws you here?</h1>
+    <p class="meta" style="margin-top:.6rem">Pick up to three, or skip. You can change them later in your passport.</p>
+    <div class="tiles" role="group" aria-label="Interests">${PATHS.map(([p,d])=>`<button class="tile" data-act="hx-path" data-path="${p}" aria-pressed="${hx.paths.includes(p)}"><b>${p}</b><span>${d}</span></button>`).join('')}</div>
+    <div class="field" style="margin-top:0"><label for="hx-aff">A territory you feel close to (optional)</label>
       <select class="input select" id="hx-aff"><option value="">Decide later</option>${REGIONS.filter(r=>r.people).map(r=>`<option value="${r.id}" ${hx.affinity===r.id?'selected':''}>${esc(r.name)}, with the ${esc(r.people)}</option>`).join('')}</select>
-      <span class="hint">Affinity is not citizenship. Nothing here locks you in.</span></div>
-    <div class="btn-row" style="margin-top:1.4rem"><button class="btn btn-primary" data-act="hx-paths">Continue</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
+      <span class="hint">This is not citizenship. Nothing here locks you in.</span></div>
+    <div class="btn-row hx-stick"><button class="btn btn-primary" data-act="hx-paths">Continue</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
   } else {
     body=`<h1 class="display">Your passport</h1>
     <div class="passport">${guilloche()}
@@ -2837,18 +2827,16 @@ function viewHotex(){
       <div class="pp-name" dir="auto">${esc(hx.handle)}</div>
       <dl><dt>Status</dt><dd>Hotex Guest</dd>
       <dt>Home territory</dt><dd>${hx.affinity?esc(R[hx.affinity].name):'Undecided'}</dd>
-      <dt>Residency anchor</dt><dd>None yet</dd>
-      <dt>Governance</dt><dd>Not yet eligible</dd>
-      <dt>Interests</dt><dd>${hx.paths.length?esc(hx.paths.join(', ')):'Not chosen yet'}</dd>
+      <dt>Interests</dt><dd>${hx.paths.length?esc(hx.paths.join(', ')):'Open to everything'}</dd>
       <dt>Issued at</dt><dd>Hotex</dd></dl>
       ${mrz(hx.handle,'XLD0000000','HOTEX GUEST')}
     </div>
-    <p class="meta" style="margin:-.8rem 0 1.6rem">Your passport also opens a simulated wallet with a sandbox allowance of ${SIM.sandboxGrantBuX.toLocaleString('en-US')} BuX for testing. It is not canon issuance.</p>
-    <div class="btn-row"><button class="btn btn-gold" data-act="hx-issue">Inscribe my passport</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
+    <p class="meta" style="margin:-.8rem 0 1.2rem">It comes with a wallet holding ${SIM.sandboxGrantBuX.toLocaleString('en-US')} practice BuX, enough to farm, trade and buy your first lot.</p>
+    <div class="btn-row hx-stick"><button class="btn btn-gold" data-act="hx-issue">Get my passport</button><button class="link link-muted" data-act="hx-back">Back</button></div>`;
   }
   return `<section class="hotex"><div class="hotex-card glass fade-in" aria-labelledby="hx-title">
     <div class="steps" aria-hidden="true">${bar}</div>
-    <p class="step-label">Step ${hx.step+1} of 5: ${names[hx.step]}</p>${body}</div></section>`;
+    <p class="step-label">Step ${hx.step+1} of 3: ${names[hx.step]}</p>${body}</div></section>`;
 }
 
 let ui = {selected:null, place:null, tab:'t', deps:false, flat:false};
@@ -2957,7 +2945,7 @@ function viewRegion(id){
   const sec=(title,list)=> list.length?`<div class="col"><h2>${title}</h2><ul class="plain">${list.map(i=>`<li>${item(i)}</li>`).join('')}</ul></div>`:'';
   let actions='';
   if(el.can) actions=`<button class="btn btn-primary" data-act="visit" data-id="${r.id}">Visit ${esc(r.name)}</button>`;
-  else if(el.kind==='passport') actions=`<a class="btn btn-primary" href="#/hotex">Enter through Hotex</a>`;
+  else if(el.kind==='passport') actions=`<a class="btn btn-primary" href="#/hotex">Get your free passport</a>`;
   else if(el.kind==='here') actions=`<span class="chip st-open">${ICON.open}You are here</span>${PLACES.filter(q=>q.region===r.id&&q.act&&!q.hidden).slice(0,3).map(q=>`<a class="link" href="#/place/${q.id}">${esc(q.name)}</a>`).join('')}`;
   const canAffinity = state.passport && r.people && state.affinity!==r.id;
   return `<article class="page fade-in">
@@ -3016,7 +3004,7 @@ function viewQuests(){
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Journal</h1><p class="lede">Missions come from places, institutions and the state of the world. Follow up to ${MAX_ACTIVE} at once. Progress is verified from what actually happens; nothing is minted.</p></div><span class="meta">Issued at ${place({place:'hotex'})}</span></div>
     ${evs.length?`<h2 class="display eh">World events</h2><div class="quests">${evs.map(e=>{ const W=WEVENTS[e.id], ph=eventPhase(e), n=eventProgress(e); return `<div class="mission glass"><div class="mhead"><span class="mstate voting">${ph}</span><span class="meta">World event · ${esc(R[W.territory].name)}</span></div><h3>${esc(W.name)}</h3><p class="meta">${esc(W.effect)}</p><p><b>Objective:</b> ${esc(W.objective)}</p><div class="qbar"><span style="width:${Math.min(100,n/W.target*100)}%"></span></div><p class="meta">${n} of ${W.target}. ${ph==='ANNOUNCED'?'Begins':'Resolves'} at ${new Date(ph==='ANNOUNCED'?e.start:e.end).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}. Contributions are counted once each from your ledger.</p></div>`; }).join('')}</div>`:''}
-    ${dyn.length?`<h2 class="display eh">Requests</h2><div class="quests">${dyn.map(d=>{ const st=dynState(d), n=dynProgress(d); return `<div class="mission glass"><div class="mhead"><span class="mstate ${st==='COMPLETED'?'executed':'voting'}">${ST[st]||st}</span><span class="meta">Generated from city demand ${d.snapshot.demand} · template ${d.tpl} v${d.version}</span></div><h3>City supply: ${AS[d.asset].sym}</h3><p class="meta">Issued by ${esc(DYN_TEMPLATES[d.tpl].issuer)}. Sell ${d.target} ${AS[d.asset].sym} at Forgex before ${fmtDate(d.expiresAt)}.</p>${st!=='AVAILABLE'?`<div class="qbar"><span style="width:${Math.min(100,n/d.target*100)}%"></span></div><p class="meta">${Math.min(n,d.target)} of ${d.target}</p>`:''}<div class="btn-row">${st==='AVAILABLE'?`<button class="btn btn-quiet" data-act="d-accept" data-id="${d.id}">Accept request</button>`:st==='COMPLETED'?`<button class="btn btn-gold" data-act="d-reward" data-id="${d.id}">Complete and record</button>`:`<a class="btn btn-primary" href="#/place/forgex">Go to Forgex</a>`}</div></div>`; }).join('')}</div>`:''}
+    ${dyn.length?`<h2 class="display eh">Requests</h2><div class="quests">${dyn.map(d=>{ const st=dynState(d), n=dynProgress(d); return `<div class="mission glass"><div class="mhead"><span class="mstate ${st==='COMPLETED'?'executed':'voting'}">${ST[st]||st}</span><span class="meta">The city needs this now</span></div><h3>City supply: ${AS[d.asset].sym}</h3><p class="meta">Issued by ${esc(DYN_TEMPLATES[d.tpl].issuer)}. Sell ${d.target} ${AS[d.asset].sym} at Forgex before ${fmtDate(d.expiresAt)}.</p>${st!=='AVAILABLE'?`<div class="qbar"><span style="width:${Math.min(100,n/d.target*100)}%"></span></div><p class="meta">${Math.min(n,d.target)} of ${d.target}</p>`:''}<div class="btn-row">${st==='AVAILABLE'?`<button class="btn btn-quiet" data-act="d-accept" data-id="${d.id}">Accept request</button>`:st==='COMPLETED'?`<button class="btn btn-gold" data-act="d-reward" data-id="${d.id}">Complete and record</button>`:`<a class="btn btn-primary" href="#/place/forgex">Go to Forgex</a>`}</div></div>`; }).join('')}</div>`:''}
     <h2 class="display eh">Active missions</h2>${active.length?`<div class="quests">${active.map(mcard).join('')}</div>`:'<p class="meta">No active missions. Accept one below.</p>'}
     ${avail.length?`<h2 class="display eh">Available</h2><div class="quests">${avail.map(mcard).join('')}</div>`:''}
     ${locked.length?`<h2 class="display eh">Locked</h2><div class="quests">${locked.map(mcard).join('')}</div>`:''}
@@ -3175,10 +3163,10 @@ function provenance(asset){ if(!['vegiex','livestox','quarx'].includes(asset)) r
   const src=asset==='quarx'?'extracted in Xalp':'produced in FarmX';
   return `<p class="meta">Provenance: ${fmtAmt(made)} ${src}${bought?`, ${fmtAmt(bought)} bought at markets (origin ${asset==='quarx'?'Xalp':'FarmX'})`:''}</p>`; }
 function viewWallet(){
-  if(!state.passport) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.4rem">No wallet yet</h1><p class="lede">A wallet opens with your passport at Hotex.</p><a class="btn btn-primary" href="#/hotex">Enter through Hotex</a></div></section>`;
+  if(!state.passport) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.4rem">No wallet yet</h1><p class="lede">A wallet opens with your passport at Hotex.</p><a class="btn btn-primary" href="#/hotex">Get your free passport</a></div></section>`;
   const rows=[...state.ledger].reverse();
   return `<section class="page fade-in">
-    <div class="page-head"><div><h1 class="display">Wallet</h1><p class="lede">Your balances inside Xland. Every amount here is an internal simulation, and every change is written to an append-only ledger. <a class="link" href="#/economy">Open the civilization ledger</a></p></div><span class="sim-badge">Simulation</span></div>
+    <div class="page-head"><div><h1 class="display">Wallet</h1><p class="lede">What you hold in Xland. It is practice money for now, and every change is recorded. <a class="link" href="#/economy">See the whole economy</a></p></div><span class="sim-badge">Simulation</span></div>
     ${serverMode?`<div class="wallet-status glass"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${wallet.err?'restricted':'open'}"/></svg><p class="meta" style="margin:0"><b>Official balances kept by xland.world.</b> ${wallet.err?esc(wallet.err):state.walletAt?`Checked ${new Date(state.walletAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}${(state.outbox||[]).length?`, ${state.outbox.length} change${state.outbox.length>1?'s':''} on the way`:''}.`:'Connecting…'}${(state.walletLog||[]).length?` ${state.walletLog.length} change${state.walletLog.length>1?'s were':' was'} not accepted by the server; the wallet follows the server.`:''}</p></div>`:''}
     <div class="assets">${ASSETS.map(a=>`<div class="asset glass"><div class="asset-head"><b>${a.sym}</b><span class="meta">${esc(a.type)}, ${esc(a.domain)}</span></div>
       <div class="asset-amt">${fmtAmt(state.bal[a.id]||'0')}</div>${provenance(a.id)}${BigInt(state.locked[a.id]||'0')>0n?`<p class="meta">Locked: ${fmtAmt(state.locked[a.id])} ${a.sym}</p>`:''}<p class="meta">${esc(a.use)}</p><p class="asset-how">${esc(a.how)}</p></div>`).join('')}</div>
@@ -3195,7 +3183,7 @@ function viewChronicle(){
   return `<section class="page fade-in">
     <div class="page-head"><div><h1 class="display">Chronicle</h1><p class="lede">Your lasting history in Xland. Arrivals, first visits and milestones are recorded here. In this prototype it is a record, not a blockchain.</p></div></div>
     ${items.length?`<ol class="timeline">${items.map(e=>`<li class="${e.importance}"><time datetime="${new Date(e.at).toISOString()}">${fmtDate(e.at)}</time><div><h3>${esc(e.title)}</h3><p class="meta">${esc(e.summary)}${e.region?` <a class="link link-muted" href="#/region/${e.region}">${esc(R[e.region].name)}</a>`:''}</p></div></li>`).join('')}</ol>`
-    :`<div class="empty glass"><p class="lede">Your Chronicle is empty. It begins the moment you arrive through Hotex.</p><a class="btn btn-primary" href="#/hotex">Enter through Hotex</a></div>`}
+    :`<div class="empty glass"><p class="lede">Your Chronicle is empty. It begins the moment you arrive through Hotex.</p><a class="btn btn-primary" href="#/hotex">Get your free passport</a></div>`}
   </section>`;
 }
 
@@ -3244,7 +3232,7 @@ function reputationEvidence(){ const s=state, L=s.ledger, ops=p=>new Set(L.filte
    ['Governance history',[`Motions proposed: ${s.proposals.length}`,`Votes cast: ${s.proposals.filter(p=>p.myVote).length}`]],
    ['Legacy',[`Significant Chronicle entries: ${s.chronicle.filter(e=>e.importance!=='ordinary').length}`]]]; }
 function viewProfile(){
-  if(!state.passport) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.4rem">No passport yet</h1><p class="lede">You are a Visitor. Signing in is not citizenship: a passport is issued only at Hotex.</p><a class="btn btn-primary" href="#/hotex">Enter through Hotex</a></div></section>`;
+  if(!state.passport) return `<section class="page fade-in"><div class="empty glass"><h1 class="display" style="font-size:2.4rem">No passport yet</h1><p class="lede">You are a Visitor. Signing in is not citizenship: a passport is issued only at Hotex.</p><a class="btn btn-primary" href="#/hotex">Get your free passport</a></div></section>`;
   const s=state, li=LIDX(s.identity), h=s.homes[0], pv=s.privacy, vis=k=>`<button class="link link-muted" data-act="p-priv" data-id="${k}">${pv[k]||'citizens'}</button>`;
   return `<section class="page fade-in">
     <div class="pp-artifact glass">${guilloche()}
@@ -3258,35 +3246,38 @@ function viewProfile(){
     </div>
     <div class="grid2" style="margin-top:1.2rem">
       <div class="card glass"><h2>Residence</h2>${h?`<dl class="kv"><dt>Anchor</dt><dd><a class="link" href="#/parcel/${h.parcel||'XIM-R-01'}">Homax on ${h.parcel||'XIM-R-01'}</a>, ${esc(R[h.region].name)}</dd><dt>Since</dt><dd>${fmtDate(h.at)}</dd><dt>Status</dt><dd>Active</dd><dt>Rights</dt><dd>Residence; citizenship anchor; private gallery (Preview)</dd><dt>Constraints</dt><dd>No resale below acquisition + 1 BuX</dd></dl><p class="meta">Residence does not automatically grant citizenship; the threshold is TBD.</p>`:`<p class="meta">No residence yet. Homax is the residential path to citizenship.</p><a class="btn btn-quiet" href="#/place/homax">Find a Homax</a>`}</div>
-      <div class="card glass"><h2>Permissions</h2><ul class="checks" style="margin:0">${capabilities().map(c=>`<li class="${c.ok?'ok':'no'}"><b>${esc(c.n)}</b><br><span class="meta">${esc(c.why)}</span>${c.go?` <a class="link link-muted" href="${c.go}">Go</a>`:''}</li>`).join('')}</ul></div>
+      <div class="card glass"><h2>Property and rights</h2><ul class="plain">${(s.rights||[]).filter(r=>r.status==='active').map(r=>`<li><a class="link" href="#/parcel/${r.parcel}"><b>${PBY[r.parcel]?landWord(PBY[r.parcel]):'Parcel'} ${r.parcel}</b></a> <span class="meta">${esc(R[r.territory].name)}</span><br><span class="meta">${esc(r.rights.join(', '))}</span></li>`).join('')}${s.buildings.map(b=>`<li><b>${esc(BUILDING_DEFS[b.def].name)}</b> on ${b.parcel}<br><span class="meta">${esc(BUILDING_DEFS[b.def].operation)}</span></li>`).join('')}${s.rentals.filter(r=>r.end>Date.now()).map(r=>`<li><b>${esc(PL[r.place].name)}</b><br><span class="meta">Use right until ${fmtDate(r.end)}</span></li>`).join('')}${s.items.map(i=>`<li><b>${esc(i.name)}</b><br><span class="meta">Rare asset, ${esc(i.from)}</span></li>`).join('')||(h?'':'<li class="meta">No rights held yet.</li>')}</ul></div>
+      <div class="card glass span2"><h2>What you can do now</h2><ul class="checks pp-checks" style="margin:0">${capabilities().map(c=>`<li class="${c.ok?'ok':'no'}"><b>${esc(c.n)}</b><br><span class="meta">${esc(c.why)}</span>${c.go?` <a class="link link-muted" href="${c.go}">Go</a>`:''}</li>`).join('')}</ul></div>
+      <div class="card glass span2"><h2>Loremarks</h2><p class="meta" style="margin:-.4rem 0 .8rem">Soulbound marks of what you have done. They can never be sold and carry no financial value.</p><div class="achs">${ACH.map(a=>{ const got=s.ach.includes(a.id); return `<div class="ach ${got?'got':''}"><b>${esc(a.name)}</b><span>${esc(a.crit)}</span>${got?`<button class="link" data-act="title" data-v="${s.title===a.id?'':a.id}">${s.title===a.id?'Remove title':'Use as title'}</button>`:''}</div>`; }).join('')}</div></div>
+      ${serverMode&&serverBE?`<div class="card glass span2"><h2>Your citizen key</h2><p class="meta">This browser holds the key to your citizen. To continue on another device, copy it here and paste it there. Anyone with the key can act as you, so keep it private.</p>
+        <div class="btn-row" style="margin-top:.8rem"><button class="btn btn-quiet" data-act="key-copy">Copy my key</button><button class="link link-muted" data-act="key-show">${ui.showKey?'Hide':'Show'} key</button></div>${ui.showKey?`<p class="meta" style="margin-top:.6rem;word-break:break-all"><code>${esc(serverBE.key())}</code></p>`:''}
+        <div class="swap-row" style="margin-top:1rem;max-width:none"><label class="meta" for="key-in">Use a key from another device (this device's progress is replaced by that citizen's)</label><div style="display:flex;gap:.6rem"><input class="input" id="key-in" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn btn-quiet" data-act="key-use">Use key</button></div></div></div>`:''}
+      <div class="card glass"><h2>Chronicle highlights</h2><ul class="plain">${s.chronicle.filter(e=>e.importance!=='ordinary').slice(-6).reverse().map(e=>`<li><b>${esc(e.title)}</b><br><span class="meta">${fmtDate(e.at)}</span></li>`).join('')||'<li class="meta">None yet.</li>'}</ul><a class="link" href="#/chronicle">Open the Chronicle</a></div>
+      <div class="card glass span2"><h2>Privacy</h2><p class="meta" style="margin-bottom:.8rem">Tap a setting to cycle private, citizens, public. Balances, property values and voting behaviour are never public.</p>
+        <dl class="kv"><dt>Display name</dt><dd>${vis('name')}</dd><dt>Title</dt><dd>${vis('title')}</dd><dt>Territory relations</dt><dd>${vis('relations')}</dd><dt>Chronicle highlights</dt><dd>${vis('chronicle')}</dd><dt>Presence (where you are now)</dt><dd>${vis('presence')}</dd></dl>
+        <div class="pubcard"><span class="meta">Public card preview</span><b dir="auto">${pv.name==='public'?esc(s.handle):'An Xlander'}</b>${pv.title==='public'&&s.title?`<span>${esc(ACH.find(a=>a.id===s.title).name)}</span>`:''}${pv.relations==='public'?`<span class="meta">${REGIONS.filter(r=>relations(r.id).length).map(r=>r.name).join(', ')}</span>`:''}${pv.chronicle==='public'?`<span class="meta">${s.chronicle.filter(e=>e.importance==='legacy').map(e=>esc(e.title)).slice(-2).join(' · ')}</span>`:''}</div></div>
+    </div>
+    <div class="pp-more"><button class="btn btn-quiet" data-act="pp-more" aria-expanded="${ui.ppMore?'true':'false'}">${ui.ppMore?'Hide the full record':'Show the full record'}</button><span class="meta">Territory relations, discovery, civic record, roles, reputation and history.</span></div>
+    ${ui.ppMore?`<div class="grid2" style="margin-top:1.2rem">
       <div class="card glass span2"><h2>Territory relations</h2><div class="tbl"><table><tbody>${REGIONS.map(r=>{ const rel=relations(r.id); return `<tr><td><a class="link" href="#/region/${r.id}"><b>${esc(r.name)}</b></a></td><td>${rel.length?rel.map(x=>`<span class="disc disc-3" style="margin:0 .3rem .3rem 0;display:inline-block">${x}</span>`).join(''):'<span class="meta">Unknown</span>'}</td></tr>`; }).join('')}</tbody></table></div><p class="meta" style="margin-top:.6rem">Relations coexist. There is no single territory level.</p></div>
       <div class="card glass"><h2>Discovery</h2><dl class="kv"><dt>Landmarks visited</dt><dd>${s.placeVisits.length}</dd><dt>Known</dt><dd>${s.discovered.length}</dd></dl><ul class="plain" style="margin-top:.8rem">${s.placeVisits.slice(-5).reverse().map(pid=>`<li><a class="link" href="#/place/${pid}">${esc(PL[pid].name)}</a> <span class="meta">${esc(R[PL[pid].region].name)}</span></li>`).join('')}</ul></div>
       <div class="card glass"><h2>Civic record</h2><dl class="kv"><dt>Maturity</dt><dd>${civicMaturity()}</dd><dt>Institutions</dt><dd>${Object.keys(s.services).map(k=>esc(PL[k].name)).join(', ')||'None yet'}</dd><dt>Governance</dt><dd>${s.proposals.length} motions, ${s.proposals.filter(p=>p.myVote).length} votes</dd><dt>Eligibility</dt><dd>${eligibleToVote()?'Eligible (sandbox)':'Not yet'}; Lex rules TBD</dd></dl></div>
       <div class="card glass"><h2>Economic roles</h2><p>${rolesOf().map(r=>`<span class="disc disc-2" style="margin:0 .3rem .3rem 0;display:inline-block">${r}</span>`).join('')||'<span class="meta">No roles yet. Roles come from what you do.</span>'}</p>${['vegiex','livestox','quarx'].map(provenance).join('')}<p class="meta">Balances stay in the Wallet; the passport is not a trading dashboard.</p></div>
-      <div class="card glass"><h2>Property and rights</h2><ul class="plain">${(s.rights||[]).filter(r=>r.status==='active').map(r=>`<li><a class="link" href="#/parcel/${r.parcel}"><b>${PBY[r.parcel]?landWord(PBY[r.parcel]):'Parcel'} ${r.parcel}</b></a> <span class="meta">${esc(R[r.territory].name)}</span><br><span class="meta">${esc(r.rights.join(', '))}</span></li>`).join('')}${s.buildings.map(b=>`<li><b>${esc(BUILDING_DEFS[b.def].name)}</b> on ${b.parcel}<br><span class="meta">${esc(BUILDING_DEFS[b.def].operation)}</span></li>`).join('')}${s.rentals.filter(r=>r.end>Date.now()).map(r=>`<li><b>${esc(PL[r.place].name)}</b><br><span class="meta">Use right until ${fmtDate(r.end)}</span></li>`).join('')}${s.items.map(i=>`<li><b>${esc(i.name)}</b><br><span class="meta">Rare asset, ${esc(i.from)}</span></li>`).join('')||(h?'':'<li class="meta">No rights held yet.</li>')}</ul></div>
       <div class="card glass span2"><h2>Reputation evidence</h2><div class="axes">${reputationEvidence().map(([n,ev])=>`<div class="axis"><b>${n}</b><ul>${ev.map(e=>`<li>${e}</li>`).join('')}</ul></div>`).join('')}</div><p class="meta" style="margin-top:.8rem">Evidence only. Aggregate score: disabled, formula TBD (config rep-v0). Wealth is never reputation.</p></div>
-      <div class="card glass span2"><h2>Loremarks</h2><p class="meta" style="margin:-.4rem 0 .8rem">Soulbound marks of what you have done. They can never be sold and carry no financial value.</p><div class="achs">${ACH.map(a=>{ const got=s.ach.includes(a.id); return `<div class="ach ${got?'got':''}"><b>${esc(a.name)}</b><span>${esc(a.crit)}</span>${got?`<button class="link" data-act="title" data-v="${s.title===a.id?'':a.id}">${s.title===a.id?'Remove title':'Use as title'}</button>`:''}</div>`; }).join('')}</div></div>
-      <div class="card glass"><h2>Chronicle highlights</h2><ul class="plain">${s.chronicle.filter(e=>e.importance!=='ordinary').slice(-6).reverse().map(e=>`<li><b>${esc(e.title)}</b><br><span class="meta">${fmtDate(e.at)}</span></li>`).join('')||'<li class="meta">None yet.</li>'}</ul><a class="link" href="#/chronicle">Open the Chronicle</a></div>
       <div class="card glass"><h2>Identity history</h2><ul class="plain">${s.transitions.map(t=>`<li><b>${esc((LADDER.find(l=>l.id===t.from)||{}).name||t.from)} → ${esc((LADDER.find(l=>l.id===t.to)||{}).name||t.to)}</b><br><span class="meta">${esc(t.reason)}, ${fmtDate(t.at)}</span></li>`).join('')}</ul><p class="meta">Transitions are append-only and never erased.</p></div>
-      <div class="card glass span2"><h2>Privacy</h2><p class="meta" style="margin-bottom:.8rem">Tap a setting to cycle private, citizens, public. Balances, property values and voting behaviour are never public.</p>
-        <dl class="kv"><dt>Display name</dt><dd>${vis('name')}</dd><dt>Title</dt><dd>${vis('title')}</dd><dt>Territory relations</dt><dd>${vis('relations')}</dd><dt>Chronicle highlights</dt><dd>${vis('chronicle')}</dd><dt>Presence (where you are now)</dt><dd>${vis('presence')}</dd></dl>
-        <div class="pubcard"><span class="meta">Public card preview</span><b dir="auto">${pv.name==='public'?esc(s.handle):'An Xlander'}</b>${pv.title==='public'&&s.title?`<span>${esc(ACH.find(a=>a.id===s.title).name)}</span>`:''}${pv.relations==='public'?`<span class="meta">${REGIONS.filter(r=>relations(r.id).length).map(r=>r.name).join(', ')}</span>`:''}${pv.chronicle==='public'?`<span class="meta">${s.chronicle.filter(e=>e.importance==='legacy').map(e=>esc(e.title)).slice(-2).join(' · ')}</span>`:''}</div></div>
-      ${serverMode&&serverBE?`<div class="card glass span2"><h2>Your citizen key</h2><p class="meta">This browser holds the key to your citizen. To continue on another device, copy it here and paste it there. Anyone with the key can act as you, so keep it private.</p>
-        <div class="btn-row" style="margin-top:.8rem"><button class="btn btn-quiet" data-act="key-copy">Copy my key</button><button class="link link-muted" data-act="key-show">${ui.showKey?'Hide':'Show'} key</button></div>${ui.showKey?`<p class="meta" style="margin-top:.6rem;word-break:break-all"><code>${esc(serverBE.key())}</code></p>`:''}
-        <div class="swap-row" style="margin-top:1rem;max-width:none"><label class="meta" for="key-in">Use a key from another device (this device's progress is replaced by that citizen's)</label><div style="display:flex;gap:.6rem"><input class="input" id="key-in" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn btn-quiet" data-act="key-use">Use key</button></div></div></div>`:''}
       <div class="card glass span2"><h2>Activity history</h2><ol class="evlist">${[...s.events].reverse().slice(0,14).map(e=>`<li><span>${esc(eventLabel(e))}</span><span class="meta">${fmtDate(e.at)}</span></li>`).join('')||'<li class="meta">No events yet.</li>'}</ol></div>
-    </div>
+    </div>`:''}
     <div class="btn-row" style="margin-top:2.5rem">${social.isOwner?'<a class="link" href="#/founder">Founder dashboard</a>':''}<button class="link link-muted" data-act="intro-replay">Replay the Great Arrival</button>${state.guide&&state.guide.hidden&&!(state.guide.finished)?'<button class="link link-muted" data-act="guide-open">Show the first-steps guide</button>':''}<button class="link link-muted" data-act="reset">${resetArmed?'Click again to erase this prototype profile':'Reset my prototype data'}</button></div>
   </section>`;
 }
 
 /* ---------------- First steps: cinematic arrival and a guide that tracks real actions ---------------- */
 const GUIDE = [
-  {id:'tap', text:'Tap any territory on the map. Every land has its own law and its own price.', done:s=>s.inspected.length>=2, go:'#/world', cta:'Open the map'},
+  {id:'tap', text:'Tap a territory on the map and open it. Every land has its own law and its own price.', done:s=>s.inspected.length>=1, go:'#/world', cta:'Open the map'},
   {id:'farm', text:'Travel to FarmX and start a harvest at the fields.', done:s=>!!s.plot||s.ledger.some(e=>e.op.startsWith('prod-')), go:'#/place/fields', cta:'Go to the fields'},
   {id:'trade', text:'When the harvest is ready, sell it at FarmXSwap, the native market.', done:s=>s.ledger.some(e=>e.op.startsWith('swap-')), go:'#/place/farmxswap', cta:'Go to FarmXSwap'},
   {id:'journal', text:'Open your Journal and accept a mission. Missions come from places, not from a menu.', done:s=>Object.entries(s.mstate||{}).some(([k,v])=>k!=='arrival'&&v==='active')||Object.values(s.mstate||{}).filter(v=>v==='rewarded').length>1||(s.dyn||[]).some(d=>d.acceptedAt), go:'#/quests', cta:'Open the Journal'},
-  {id:'passport', text:'Look at your Passport: what you can do, what you cannot, and why.', done:s=>!!s.seenPassport, go:'#/profile', cta:'Open the Passport'}
+  {id:'passport', text:'Open your Passport: it shows what you can do now and what opens next.', done:s=>!!s.seenPassport, go:'#/profile', cta:'Open the Passport'}
 ];
 /* The guide floats above the content; reserve its height so it never hides buttons or the end of a page. */
 function syncGuideSpace(){ const g=$('#guide'); const h=g&&g.firstElementChild?g.offsetHeight+12:0; document.documentElement.style.setProperty('--guide-h', h+'px'); }
@@ -3297,7 +3288,7 @@ function renderGuideInner(route){ const g=$('#guide'); if(!g) return; const s=st
   const idx=GUIDE.findIndex(x=>!x.done(s));
   if(idx<0){ if(!(s.guide&&s.guide.finished)){ s.guide=Object.assign({},s.guide,{finished:true}); chron('FirstSteps','First steps in Xland complete','You read the land, worked it, traded, took a mission and read your passport.',null,'ordinary'); save(); toast('First steps complete. Xland is yours to explore.'); } g.innerHTML=''; return; }
   // On a phone the guide starts as a small pill on pages that have their own action bar, so it never crowds the screen.
-  const st=GUIDE[idx], min=(s.guide&&s.guide.min!=null)?s.guide.min:(window.matchMedia('(max-width:820px)').matches&&!['world','home'].includes(route));
+  const st=GUIDE[idx], min=(s.guide&&s.guide.min!=null)?s.guide.min:(window.matchMedia('(max-width:820px)').matches&&!(idx===0&&['world','home'].includes(route)));
   g.innerHTML = min ? `<button class="guide-pill" data-act="guide-open">First steps ${idx+1}/${GUIDE.length}</button>`
     : `<div class="guide glass"><div class="guide-top"><span class="meta">First steps · ${idx+1} of ${GUIDE.length}</span><span><button class="link link-muted" data-act="guide-min">Minimize</button> <button class="link link-muted" data-act="guide-hide">Hide</button></span></div>
       <div class="guide-steps">${GUIDE.map((x,i)=>`<i class="${i<idx?'done':i===idx?'now':''}"></i>`).join('')}</div>
@@ -3308,7 +3299,7 @@ function showIntro(){ const el=$('#intro'); if(!el) return; el.hidden=false; int
 function drawIntro(){ const el=$('#intro'); const last=introIdx>=INTRO.length-1, [t,x]=INTRO[introIdx];
   el.innerHTML=`<div class="intro-in"><div class="intro-card" key="${introIdx}"><p class="meta" style="letter-spacing:.04em">${introIdx+1} / ${INTRO.length}</p><h2 class="display">${esc(t)}</h2><p class="lede">${esc(x)}</p></div>
     <div class="intro-dots">${INTRO.map((_,i)=>`<i class="${i===introIdx?'on':''}"></i>`).join('')}</div>
-    <div class="btn-row" style="justify-content:center">${last?`<a class="btn btn-gold" href="#/hotex" data-act="intro-end">Enter through Hotex</a><button class="link link-muted" data-act="intro-end">Explore first</button>`:`<button class="btn btn-quiet" data-act="intro-next">Continue</button><button class="link link-muted" data-act="intro-end">Skip</button>`}</div></div>`;
+    <div class="btn-row" style="justify-content:center">${last?`<a class="btn btn-gold" href="#/hotex" data-act="intro-end">Get your free passport</a><button class="link link-muted" data-act="intro-end">Explore first</button>`:`<button class="btn btn-quiet" data-act="intro-next">Continue</button><button class="link link-muted" data-act="intro-end">Skip</button>`}</div></div>`;
   clearTimeout(introTimer); if(!last && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) introTimer=setTimeout(()=>{ introIdx++; drawIntro(); }, 7000); }
 function endIntro(){ clearTimeout(introTimer); const el=$('#intro'); if(el){ el.hidden=true; el.innerHTML=''; } try{ localStorage.setItem('xland.introSeen','1'); }catch(e){} state.introSeen=true; save(); }
 
@@ -3381,7 +3372,7 @@ function render(){
   mountScene();
   renderGuide(route);
   if(key!==lastRoute){ window.scrollTo(0,0); lastRoute=key; }
-  if(route==='hotex' && hx.step===2){ const i=$('#hx-handle'); if(i) i.focus(); }
+  if(route==='hotex' && hx.step===0 && !state.passport && matchMedia('(min-width:760px)').matches){ const i=$('#hx-handle'); if(i) i.focus(); }
 }
 window.addEventListener('hashchange', ()=>{ resetArmed=false; render(); });
 
@@ -3437,7 +3428,7 @@ const secsLeft = end => Math.max(0,Math.ceil((end-Date.now())/1000));
 const fmtSecs = s => s>=60?`${Math.floor(s/60)}m ${String(s%60).padStart(2,'0')}s`:`${s}s`;
 function here(region){ return state.passport && state.currentRegion===region; }
 function presence(region){
-  if(!state.passport) return `<div class="gate"><p>You need a passport before you can act here.</p><a class="btn btn-primary" href="#/hotex">Enter through Hotex</a></div>`;
+  if(!state.passport) return `<div class="gate"><p>You need a passport before you can act here.</p><a class="btn btn-primary" href="#/hotex">Get your free passport</a></div>`;
   if(state.currentRegion!==region) return `<div class="gate"><p>This activity happens in ${esc(R[region].name)}. You are in ${state.currentRegion?esc(R[state.currentRegion].name):'Hotex'}.</p><button class="btn btn-primary" data-act="travel" data-id="${region}">Travel to ${esc(R[region].name)}</button></div>`;
   return '';
 }
@@ -4220,10 +4211,10 @@ document.addEventListener('click', e=>{
     case 'hx-back': hx.step=Math.max(0,hx.step-1); render(); break;
     case 'hx-name': { const v=($('#hx-handle').value||'').trim().replace(/\s+/g,' '); const hint=$('#hx-hint');
       if(!HANDLE_RE.test(v)){ const msg=v.length<2?'Enter at least 2 characters.':v.length>24?'Use 24 characters or fewer.':'Use letters in any language, numbers, spaces, underscore or hyphen.'; hint.textContent=msg; hint.classList.add('err'); toast(msg); $('#hx-handle').focus(); return; }
-      hx.handle=v; hx.step=3; render(); break; }
+      hx.handle=v; hx.step=1; render(); break; }
     case 'hx-path': { const p=b.dataset.path; if(hx.paths.includes(p)) hx.paths=hx.paths.filter(x=>x!==p); else if(hx.paths.length<3) hx.paths.push(p); else { toast('Choose up to three paths.'); return; }
       b.setAttribute('aria-pressed', hx.paths.includes(p)); break; }
-    case 'hx-paths': hx.affinity=$('#hx-aff').value; hx.step=4; render(); break;
+    case 'hx-paths': hx.affinity=$('#hx-aff').value; hx.step=2; render(); window.scrollTo(0,0); break;
     case 'hx-issue':
       if(state.passport) return;
       state.passport=true; state.identity='guest'; state.passportId=newPassportId(); state.handle=hx.handle; state.paths=hx.paths.slice(); state.affinity=hx.affinity||null; state.createdAt=Date.now();
@@ -4231,7 +4222,7 @@ document.addEventListener('click', e=>{
       state.transitions.push({from:'visitor',to:'guest',reason:'Hotex check-in',at:Date.now()}); state.mstate.arrival='active';
       chron('PassportInscribed','Passport inscribed at Hotex',`${hx.handle} checked in at Hotex and became a Hotex Guest. Passport ${state.passportId}.`,null,'legacy');
       grantSandbox(state); if(serverMode && serverBE) serverBE.call('POST','/bux/sandbox').catch(()=>{});
-      state.guide={min:false}; save(); hx={step:0,handle:'',paths:[],affinity:''}; location.hash='#/world'; toast('Passport inscribed. You are now a Hotex Guest.'); break;
+      state.guide={}; save(); hx={step:0,handle:'',paths:[],affinity:''}; location.hash='#/world'; toast('Welcome to Xland. Your passport and wallet are ready.'); break;
     case 'travel': { const r=R[id], el=eligibility(r); if(!el.can){ toast(el.text); return; } visit(id); break; }
     case 'prod-start': case 'prod-start-own': if(serverMode && serverBE){ const own=act==='prod-start-own', f=SIM.farm[id]; if(!here('farmx')||(own?state.plotOwn:state.plot)||!f) return; if(own && !state.buildings.some(b=>b.def==='farmstead')) return;
         b.disabled=true; (async()=>{ try{ const j=await serverBE.call('POST',`/farm/start?slot=${own?'own':'field'}&kind=${id}&mult=${Math.min(1,evMod('yieldMult',1))}`), off=Date.now()-j.now;
@@ -4496,6 +4487,7 @@ document.addEventListener('click', e=>{
     case 'ppx-del': { const doc=myPosts(); doc.msgs=(doc.msgs||[]).filter(m=>m.id!==id); writeMyPosts(doc).catch(()=>toast('Could not delete.')); break; }
     case 'ppx-report': { const doc=myPosts(); doc.reports=(doc.reports||[]).filter(r=>!(r.uid===b.dataset.uid&&r.mid===id)).concat([{uid:b.dataset.uid, mid:id, at:Date.now()}]); writeMyPosts(doc).then(()=>toast('Reported to the owner. Thank you.')).catch(()=>toast('Could not report.')); break; }
     case 'ppx-remove': { if(!social.isOwner) return; const uid=b.dataset.uid, d=clonePlain(social.posts[uid]||{}); d.msgs=(d.msgs||[]).filter(m=>m.id!==id); social.db.doc('posts/'+uid).set(d).then(()=>{ emit('MODERATION_REMOVED',{}); toast('Message removed.'); }).catch(()=>toast('Could not remove.')); break; }
+    case 'pp-more': ui.ppMore=!ui.ppMore; render(); break;
     case 'guide-min': state.guide=Object.assign({},state.guide,{min:true}); save(); renderGuide(parse().route); break;
     case 'guide-open': state.guide=Object.assign({},state.guide,{min:false,hidden:false}); save(); renderGuide(parse().route); break;
     case 'guide-hide': state.guide=Object.assign({},state.guide,{hidden:true}); save(); renderGuide(parse().route); toast('Guide hidden. You can bring it back from your Passport.'); break;
@@ -4541,7 +4533,9 @@ document.addEventListener('keydown', e=>{
 
 render();
 connect();
-setTimeout(()=>{ let seen=state.introSeen; try{ seen=seen||localStorage.getItem('xland.introSeen'); }catch(e){} if(!seen && !state.passport && (location.hash===''||location.hash==='#/')) showIntro(); },900);
+// r59 (CX): the five-slide Great Arrival no longer covers a first visit. A newcomer sees Xland at once; the story is one
+// tap away on the landing page and in the passport. Leaving the page it was opened on closes it.
+window.addEventListener('hashchange', ()=>{ const el=$('#intro'); if(el && !el.hidden) endIntro(); });
 setTimeout(()=>{ rollDailyEvent(); },2600);
 setTimeout(()=>{ if(!state.passport) return; const gone=Date.now()-(state.lastSeen||0), ready=[];
   if(state.plot&&Date.now()>=state.plot.end) ready.push('a harvest is ready in FarmX'); if(state.mine&&Date.now()>=state.mine.end) ready.push('QuarX is ready in Xalp'); if(state.construct&&Date.now()>=state.construct.end) ready.push('your construction is complete');

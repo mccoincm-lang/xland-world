@@ -39,7 +39,6 @@ const vp = process.argv[4] === "desk" ? { width: 1440, height: 900 } : { width: 
   try {
   await p.goto(`http://localhost:${port}/`); await p.waitForTimeout(2500); await step("landing");
   await click('a[href="#/hotex"]'); await step("hotex arrival");
-  await click('[data-act="hx-next"]'); await click('[data-act="hx-next"]');
   await p.fill("#hx-handle", "Sara"); await click('[data-act="hx-name"]');
   await click('[data-act="hx-path"][data-path="Merchant"]'); await p.selectOption("#hx-aff", "farmx");
   await click('[data-act="hx-paths"]'); await step("hotex passport");
