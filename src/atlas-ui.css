@@ -383,3 +383,15 @@ main{padding-bottom:calc(var(--guide-h,0px) + 1rem)}
   .guide-steps{display:none}
 }
 @media (min-width:821px){ .pp-checks{columns:2;column-gap:2.4rem} .pp-checks li{break-inside:avoid} }
+/* r59: on phones the thing you came to do sits right under the title; weather, details and the picture follow */
+@media (max-width:700px){
+  .act-first{display:flex;flex-direction:column}
+  .act-first>*{order:5}
+  .act-first>.back{order:0;align-self:flex-start}
+  .act-first>.region-hero,.act-first>.region-hero>div:first-child{display:contents}
+  .act-first>.region-hero>div:first-child>*{order:1}
+  .act-first>.activity{order:2;margin:1.2rem 0}
+  .act-first>.region-hero>div:first-child>.lot-facts{order:4}
+  .act-first>.region-hero>.mini{order:6;margin-top:1rem}
+  .act-first>p.faint{order:7}
+}

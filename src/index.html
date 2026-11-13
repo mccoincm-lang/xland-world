@@ -940,19 +940,19 @@ const SIM = { sandboxGrantBuX: 1000, sandboxGrantStatus:'experimental',
 /* Markets are places. Each venue has its own territory, assets and cost rules. */
 const VENUES = {
   farmxswap:{name:'FarmXSwap', region:'farmx', assets:['vegiex','livestox'], feeBase:SIM.farmxswapFeeBase, logisticsBps:0, logisticsFor:[],
-    feeNote:'Canonical fee concept 0.0001, applied here as 0.0001 BuX per swap. The unit of that fee is TBD.'},
+    feeNote:'Canonical fee concept 0.0001, applied here as 0.0001 BuX per swap. The unit of that fee is not decided yet.'},
   greenx:{name:'Green exchange', region:'ximberland', assets:['vegiex','livestox','quarx'], feeBase:0n, logisticsBps:0, logisticsFor:[],
-    feeNote:'Ximberland allows only approved green assets. The real green-asset whitelist is TBD; this sandbox approves VegieX only. No fee is defined.'},
+    feeNote:'Ximberland allows only approved green assets. The real green-asset whitelist is not decided yet; this sandbox approves VegieX only. No fee is defined.'},
   forgex:{name:'Forgex', region:'xetropolitan', assets:['vegiex','livestox','quarx'], feeBase:0n, logisticsBps:SIM.forgexLogisticsBps, logisticsFor:['vegiex','livestox'],
-    feeNote:'The Forgex fee is TBD in the canon, so none is applied. Farm goods carry a transportation cost because they travel from FarmX.'}
+    feeNote:'The Forgex fee is not decided yet, so none is applied. Farm goods carry a transportation cost because they travel from FarmX.'}
 };
-/* Governance. Lex weighting, quorum and thresholds are TBD; the sandbox rules below are labelled as such. */
+/* Governance. Lex weighting, quorum and thresholds are not decided yet; the sandbox rules below are labelled as such. */
 const GOV = { policyVersion:'gov-sim-1', eligibility:'resident', discussSecs:20, votingSecs:30, timelockSecs:10, sandboxQuorum:1, weightStrategy:'one eligible resident, one vote (simulation only; Lex balance is never used)', revote:true, delegation:false, secrecy:'Recorded openly in this single-player sandbox; policy TBD' };
 const MOTIONS = [
- {id:'permit-special', title:'Permit a Special Building in the Civic plaza', body:'Grant governance permission for one Special Building on the Civic plaza in Xetropolitan. The QuarX requirement still applies, and the Lex burn amount remains TBD.', effect:'Construction in the Civic plaza becomes permitted.'},
+ {id:'permit-special', title:'Permit a Special Building in the Civic plaza', body:'Grant governance permission for one Special Building on the Civic plaza in Xetropolitan. The QuarX requirement still applies, and the Lex burn amount is not decided yet.', effect:'Construction in the Civic plaza becomes permitted.'},
  {id:'forgex-logistics', title:'Lower transportation costs on farm goods at Forgex', body:'Reduce the simulated transportation cost on VegieX and LivestoX sold or bought at Forgex from 8% to 5%, to strengthen the supply line from FarmX to Xetropolitan.', effect:'Forgex transportation cost on farm goods drops from 8% to 5%.'},
- {id:'burn-fees', title:'Authorize burning FarmXSwap fees', body:'FarmXSwap fees sit in escrow because their destination is TBD in the canon. This motion authorizes burning the escrowed fees now and all future fees, so the burn becomes visible in Xasteland.', effect:'Escrowed and future FarmXSwap fees are burned and shown in Xasteland.'},
- {id:'quarry-capacity', title:'Extend extraction capacity at the High Quarry', body:'Raise the daily QuarX extraction capacity in Xalp from 5 to 6 seams. QuarX stays scarce and the real issuance formula remains TBD.', effect:'Daily QuarX extraction capacity rises from 5 to 6.'}
+ {id:'burn-fees', title:'Authorize burning FarmXSwap fees', body:'FarmXSwap fees sit in escrow because their destination is not decided yet. This motion authorizes burning the escrowed fees now and all future fees, so the burn becomes visible in Xasteland.', effect:'Escrowed and future FarmXSwap fees are burned and shown in Xasteland.'},
+ {id:'quarry-capacity', title:'Extend extraction capacity at the High Quarry', body:'Raise the daily QuarX extraction capacity in Xalp from 5 to 6 seams. QuarX stays scarce and the real issuance formula is not decided yet.', effect:'Daily QuarX extraction capacity rises from 5 to 6.'}
 ];
 const MO = Object.fromEntries(MOTIONS.map(m=>[m.id,m]));
 const lawOnSt = (st,id) => (st.laws||[]).some(l=>l.id===id && l.state==='ACTIVE');
@@ -980,9 +980,9 @@ const HANDLERS = {
 };
 function accountBalanceSt(st, acc, asset){ let b=0n; for(const e of st.ledger){ if(e.asset!==asset||!e.qty) continue; if(e.to===acc) b+=BigInt(e.qty); if(e.from===acc) b-=BigInt(e.qty); } return b; }
 const PTYPES = [
-  {id:'permit-special', type:'Infrastructure', handler:'construction.permitSpecial', title:'Permit a Special Building in the Civic plaza', authority:'Governance Constitution v1.0 §18 Construction; Special Buildings need governance approval', impact:['Construction in the Civic plaza becomes possible','QuarX demand from Xalp rises'], risk:'Irreversible once built. The Lex burn amount is still TBD.'},
+  {id:'permit-special', type:'Infrastructure', handler:'construction.permitSpecial', title:'Permit a Special Building in the Civic plaza', authority:'Governance Constitution v1.0 §18 Construction; Special Buildings need governance approval', impact:['Construction in the Civic plaza becomes possible','QuarX demand from Xalp rises'], risk:'Irreversible once built. The Lex burn amount is not decided yet.'},
   {id:'forgex-logistics', type:'Economic parameter', handler:'economy.forgexLogistics', title:'Lower transportation costs on farm goods at Forgex', authority:'Governance Constitution v1.0 §18 Economy: explicitly governable simulation parameter', impact:['Forgex quotes for VegieX and LivestoX','FarmX to Xetropolitan supply line'], risk:'Reversible by repeal. Lowers friction that protects the native market.'},
-  {id:'quarry-capacity', type:'Economic parameter', handler:'economy.quarryCapacity', title:'Extend extraction capacity at the High Quarry', authority:'Governance Constitution v1.0 §18 Economy; QuarX issuance itself stays TBD', impact:['QuarX extraction velocity in Xalp','Construction readiness'], risk:'Reversible by repeal. Faster issuance weakens scarcity.'},
+  {id:'quarry-capacity', type:'Economic parameter', handler:'economy.quarryCapacity', title:'Extend extraction capacity at the High Quarry', authority:'Governance Constitution v1.0 §18 Economy; QuarX issuance itself is not decided yet', impact:['QuarX extraction velocity in Xalp','Construction readiness'], risk:'Reversible by repeal. Faster issuance weakens scarcity.'},
   {id:'burn-fees', type:'Economic parameter', handler:'economy.feeDestination', title:'Authorize burning FarmXSwap fees', authority:'Tokenomics v1.0 §11: burns only under governance authority', impact:['Escrowed and future FarmXSwap fees','Xasteland burn state'], risk:'Irreversible for burned fees.'},
   {id:'xcool-program', type:'Treasury', handler:'treasury.fundXcool', title:`Fund a public workshop program at Xcool`, authority:'Governance Constitution v1.0 §15 Treasury: typed request from an existing treasury balance', impact:['Xetropolitan treasury','Xcool institution state'], risk:'Spends treasury funds. Cannot mint.'}
 ];
@@ -991,8 +991,8 @@ function repealTypes(st){ return (st.laws||[]).filter(l=>l.state==='ACTIVE'&&LAW
 function ptypeOf(id, st){ return PT[id] || repealTypes(st||state).find(t=>t.id===id) || (id.startsWith('repeal-')?{id, type:'Law', handler:'law.repeal', arg:id.slice(7), title:`Repeal: ${(LAWDEF[id.slice(7)]||{}).name}`, authority:'§16', impact:[], risk:''}:null); }
 function govCapabilities(st){ st=st||state; const elig=(st===state&&social.govSrv)?!!social.govSrv.me.eligible:LIDX(st.identity)>=LIDX(GOV.eligibility);
   return [['VIEW_PROPOSAL',true,'Public proposals are visible to everyone.'],['DELIBERATE',elig,elig?'Residents may deliberate (sandbox policy).':'Needs residency under the sandbox policy.'],
-   ['CREATE_DRAFT',elig,elig?'Allowed.':'Needs residency.'],['SUBMIT_PROPOSAL',elig,elig?'Allowed. No deposit: the deposit rule is TBD.':'Needs residency.'],
-   ['VOTE',elig,elig?`Allowed. Weight strategy: ${GOV.weightStrategy}.`:'Needs residency. Logging in or holding Lex never grants a vote.'],['DELEGATE',false,'Delegation is disabled; its rules are TBD.'],['EXECUTE_OUTCOME',false,'Only the executor service applies passed outcomes.']]; }
+   ['CREATE_DRAFT',elig,elig?'Allowed.':'Needs residency.'],['SUBMIT_PROPOSAL',elig,elig?'Allowed. No deposit: the deposit rule is not decided yet.':'Needs residency.'],
+   ['VOTE',elig,elig?`Allowed. Weight strategy: ${GOV.weightStrategy}.`:'Needs residency. Logging in or holding Lex never grants a vote.'],['DELEGATE',false,'Delegation is disabled; its rules are not decided yet.'],['EXECUTE_OUTCOME',false,'Only the executor service applies passed outcomes.']]; }
 function contentHash(o){ const str=JSON.stringify(o); let h=2166136261; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(16).padStart(8,'0'); }
 function tally(p){ const v=p.votes||{yes:0,no:0,abstain:0}, cast=v.yes+v.no+v.abstain, quorum=cast>=GOV.sandboxQuorum, T=p.type?ptypeOf(p.type):null, H=T&&HANDLERS[T.handler], irr=H&&H.law&&LAWDEF[H.law]&&!LAWDEF[H.law].reversible, threshold=irr ? (v.yes+v.no>0 && v.yes*3>=(v.yes+v.no)*2) : v.yes>v.no;
   return {counts:Object.assign({},v), quorum, threshold, passed:quorum&&threshold, policyVersion:GOV.policyVersion, computedAt:Date.now()}; }
@@ -1084,15 +1084,15 @@ function classicEventBanner(territory){ const ev=activeEvents().concat(announced
 /* Canonical territory registry: one source of truth for access, tax, markets, property rules and world state.
    Values the canon leaves open are null and shown as TBD. */
 const TERR = {
-  xetropolitan:{access:'OPEN', tax:{applies:'residents', rate:null, note:'Residents pay tax. The rate is TBD.'}, signature:'Trade, institutions and urban property', constraint:'Tax-paying, dense and competitive'},
-  farmx:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is TBD.'}, signature:'VegieX and LivestoX production with FarmXSwap', constraint:'Transportation cost outside the native market'},
+  xetropolitan:{access:'OPEN', tax:{applies:'residents', rate:null, note:'Residents pay tax. The rate is not decided yet.'}, signature:'Trade, institutions and urban property', constraint:'Tax-paying, dense and competitive'},
+  farmx:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is not decided yet.'}, signature:'VegieX and LivestoX production with FarmXSwap', constraint:'Transportation cost outside the native market'},
   xalp:{access:'OPEN', tax:{applies:'none', rate:0, note:'Tax-free because of harsh weather.'}, signature:'QuarX mining and short-term rentals', constraint:'Harsh weather; extraction is constrained'},
-  ximberland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is TBD.'}, greenAssets:['vegiex'], resaleFloor:{deltaBuX:1, why:'Anti-dumping: a home can never be resold below its acquisition price + 1 BuX, which keeps property values in the forest stable.'}, signature:'Long-term residence and a green economy', constraint:'Resale floor; approved green assets only'},
+  ximberland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is not decided yet.'}, greenAssets:['vegiex'], resaleFloor:{deltaBuX:1, why:'Anti-dumping: a home can never be resold below its acquisition price + 1 BuX, which keeps property values in the forest stable.'}, signature:'Long-term residence and a green economy', constraint:'Resale floor; approved green assets only'},
   aquax:{access:'EXCEPTIONAL', tax:{applies:null, rate:null, note:'No normal population.'}, signature:'Exploration of a rare water realm', constraint:'No normal population; one residence, not available'},
   xetland:{access:'LOCKED', lock:{rule:'Land is not for sale for the first ten years.', epoch:null, trigger:null}, tax:{applies:null,rate:null,note:'Locked.'}, signature:'Future liquidity reserve', constraint:'Locked for the first ten years'},
   xasteland:{access:'LOCKED', lock:{rule:'Opens at affordable prices when 90% of all open homes are lived in (16,254,000 residents).', trigger:'population-90'}, tax:{applies:null,rate:null,note:'Locked.'}, signature:'Visible burn history and a future frontier', constraint:'Locked until a population threshold'},
   tundrax:{access:'OPEN / RESTRICTED', tax:{applies:'none', rate:0, note:'No tax.'}, conversion:{ageYears:2, depositBuX:10000}, hardship:{ratePerYearBps:400, capBps:2000, status:'PROVISIONAL'}, resaleFloor:{deltaBuX:1, why:'Anti-dumping: a home can never be resold below its acquisition price + 1 BuX, so value in a hard territory is protected.'}, signature:'Scarce residence and later use conversion', constraint:'Very few homes; conversion takes two years and a deposit'},
-  ixeland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is TBD.'}, localAsset:{name:null, supply:null, voting:null}, signature:'Community governance', constraint:'Local governance asset is TBD'},
+  ixeland:{access:'OPEN', tax:{applies:null, rate:null, note:'Tax status is not decided yet.'}, localAsset:{name:null, supply:null, voting:null}, signature:'Community governance', constraint:'Local governance asset is not decided yet'},
   xahara:{access:'OPEN', tax:{applies:null, rate:null, note:'Nomads do not pay for a place to live or trade.'}, signature:'Rare digital assets and the outside gateway', constraint:'Scarce water and thin liquidity'}
 };
 const FLAGS = { auctions:false, bridges:false, oracles:false, xetlandUnlock:false, xastelandSettlement:false };
@@ -1236,11 +1236,11 @@ const FOUNDER_DECISIONS = [
   ['Adopted','No BuX is ever minted against QuarX or any volatile asset','An unbacked or crypto-backed peg is how Terra collapsed in 2022.'],
   ['Adopted','QuarX hard cap of 1,000,000,000 units: about 25% Forerunner Vaults (genesis), 75% mined over halving epochs with difficulty adjustment','Bitcoin-style scarcity; construction consumes QuarX permanently.'],
   ['Adopted','Genesis QuarX allocation (250,000,000): community and missions 30%, presale 20%, ecosystem and builders 15%, strategic reserve 13%, team and founders 12%, market liquidity 10%','Earned supply is largest; presale is only 5% of the cap; team 3% of the cap with a 2-year cliff and 4-year vesting; all releases linear and daily, never in one block.'],
-  ['Adopted','Presale in three tranches tied to growth (public beta, then two citizen-population milestones), per-buyer cap of 0.5% of a tranche, KYC, public reporting, no promise of return or buyback','Tranche prices and population milestones are TBD with counsel.'],
+  ['Adopted','Presale in three tranches tied to growth (public beta, then two citizen-population milestones), per-buyer cap of 0.5% of a tranche, KYC, public reporting, no promise of return or buyback','Tranche prices and population milestones are being decided with counsel.'],
   ['Adopted','Presale QuarX: use first, sell later. Usable for construction at once; tradable only after a 12 to 24 month release','Builders are never blocked; speculators cannot dump at launch.'],
   ['Adopted','Liquidity ratio: when the 30-day average value of QuarX exceeds all BuX in circulation, BanX may open external inflows (1:1 BuX against USD or stablecoins), with Assembly approval; Xetland is the second stage after ten years','Money enters when the economy truly needs liquidity, not on hype. Resolves the Xetland trigger TBD.'],
   ['Adopted','No private sale and no early VC allocation','Removes the classic source of unlock-day dumps.'],
-  ['Adopted','Lex is earned only: no pre-mint, no purchase, annual issuance cap of 5,000,000, and no holder above 5% of all Lex','Governance stays tied to participation, not wealth. Vote weight itself remains TBD.'],
+  ['Adopted','Lex is earned only: no pre-mint, no purchase, annual issuance cap of 5,000,000, and no holder above 5% of all Lex','Governance stays tied to participation, not wealth. Vote weight itself is not decided yet.'],
   ['Adopted','0.5% burn on cross-territory trades','A permanent sink on remote trade that fights inflation; native venues stay cheaper.'],
   ['Adopted','Seasonal weather in Xalp: QuarX seams take 30% longer in the cold season','Extraction velocity rises and falls; QuarX stays scarce.'],
   ['Adopted','Spoilage of unspent farm output: VegieX 2% a day above 50 units, LivestoX 5% a day above 20','Stops hoarding and later dumping of food; production has to meet demand.'],
@@ -1282,7 +1282,7 @@ function applySpoilage(st){ st=st||state; if(!st.passport) return false; const t
       const loss=(bal-free)*BigInt(c.pctPerDay)/100n; if(loss>0n && postLedger(st,`decay-${a}-${d}`,[[a,-loss,'spoilage']],`Spoilage: ${fmtAmt(loss)} ${AS[a].sym} above the storage limit`,null)) ch=true; }); }
   st.spoilDay=today; return true; }
 /* Land and built world (Property System v1.0). Parcels are data; geometry is a point reference until topology is final.
-   Prices are simulation terms; areas are TBD unless canon gives them. */
+   Prices are simulation terms; areas are not decided yet unless canon gives them. */
 const LAW_VERSION = 'law-v1';
 SIM.farmParcelPrice = 250; SIM.urbanLotPrice = 600;
 const PARCELS = [
@@ -1290,13 +1290,13 @@ const PARCELS = [
     rights:['Ownership','Residence','Transfer under the resale floor'], excluded:['Construct (no residential recipe approved yet)','Convert use'], note:'Comes with a Homax, the residential path to citizenship.'})),
   ...[[285,545],[318,556],[262,505],[282,528],[306,540],[282,510],[264,528],[300,558]].map((at,i)=>({id:'FX-A-'+String(i+1).padStart(2,'0'), t:'farmx', d:'fields', at, zoning:['Agricultural'], price:SIM.farmParcelPrice,
     rights:['Ownership','Use: agriculture','Construct: Farmstead','Transfer'], excluded:['Residence','Non-agricultural construction'], note:'Productive land. A Farmstead here gives you your own plot.'})),
-  ...[[478,452],[478,416],[442,410],[442,392],[502,446],[472,470]].map((at,i)=>({id:'XET-U-'+String(i+1).padStart(2,'0'), t:'xetropolitan', d:'market', at, zoning:['Commercial'], price:SIM.urbanLotPrice, rights:['Ownership','Use: commercial','Transfer'], excluded:['Construct (commercial recipes are feature-flagged)','Residence'], note:'Urban lot in the Market Quarter. Urban tax applies to residents; the rate is TBD.'})),
+  ...[[478,452],[478,416],[442,410],[442,392],[502,446],[472,470]].map((at,i)=>({id:'XET-U-'+String(i+1).padStart(2,'0'), t:'xetropolitan', d:'market', at, zoning:['Commercial'], price:SIM.urbanLotPrice, rights:['Ownership','Use: commercial','Transfer'], excluded:['Construct (commercial recipes are feature-flagged)','Residence'], note:'Urban lot in the Market Quarter. Urban tax applies to residents; the rate is not decided yet.'})),
   {id:'XET-C-01', t:'xetropolitan', d:'civic', at:[468,320], zoning:['Civic','Special Building'], fixed:'RESERVED', rights:['Construct: Special Building with governance permission'], excluded:['Private ownership'], note:'The public Civic plaza. Not for sale.'},
   {id:'XALP-L-01', t:'xalp', d:'resort', at:[655,300], zoning:['Resort'], leaseOnly:true, rights:['Temporary use, one night to one month'], excluded:['Ownership','Construction','Transfer'], note:'Lease only, through the Xalp resort lodges.'},
   {id:'AQX-01', t:'aquax', d:'river', at:[566,405], name:'The House on the River', eternal:true, zoning:['Residential (unique, eternal)'], fixed:'HELD', rights:['Residence of the creator of Xland, for ever'], excluded:['Acquisition','Transfer','Sale','Taxation','Division','Demolition'], note:'The House on the River: the eternal residence of the creator of Xland. It can never be sold, transferred, taxed, divided, demolished or reassigned, and it remains after its founder.'},
   {id:'TDX-01', t:'tundrax', d:'tundra', at:[302,168], zoning:['Residential'], fixed:'RESTRICTED', rights:['Ownership','Residence','Convert use after two years with a 10,000 BuX deposit'], excluded:[], note:'Initial homes are selected by ICO-era participants.'},
   {id:'TDX-02', t:'tundrax', d:'tundra', at:[330,152], zoning:['Residential'], fixed:'RESTRICTED', rights:['Ownership','Residence','Convert use after two years with a 10,000 BuX deposit'], excluded:[], note:'Initial homes are selected by ICO-era participants.'},
-  {id:'IXL-01', t:'ixeland', d:'commons', at:[440,124], zoning:['Community'], fixed:'RESTRICTED', rights:[], excluded:[], note:'Community land. Local governance mechanics are TBD.'},
+  {id:'IXL-01', t:'ixeland', d:'commons', at:[440,124], zoning:['Community'], fixed:'RESTRICTED', rights:[], excluded:[], note:'Community land. Local governance mechanics are not decided yet.'},
   {id:'XTL-01', t:'xetland', d:null, at:[470,612], zoning:['TBD'], rights:[], excluded:[], note:'Locked for the first ten years.'},
   {id:'XST-01', t:'xasteland', d:null, at:[845,365], zoning:['TBD'], rights:[], excluded:[], note:'Sealed until the population threshold.'}
 ];
@@ -1309,7 +1309,7 @@ SIM.lotCapPerTerritory = 3;   // also LOT_CAP in worker.js
 const LOT_KIND = {
   farmx:{d:'fields', zoning:['Agricultural'], use:'agriculture', excluded:['Residence','Non-agricultural construction'], note:'Productive farmland. A Farmstead opens your own plot; a Granary keeps more of the harvest.'},
   ximberland:{d:'homes', zoning:['Residential'], use:'residence', excluded:['Commercial construction'], note:'A clearing in the forest. Build a Homax to live here.'},
-  xetropolitan:{d:'market', zoning:['Urban'], use:'urban', excluded:[], note:'A vacant city lot. Residents pay urban tax; the rate is TBD.'},
+  xetropolitan:{d:'market', zoning:['Urban'], use:'urban', excluded:[], note:'A vacant city lot. Residents pay urban tax; the rate is not decided yet.'},
   xahara:{d:'bazaar', zoning:['Trade'], use:'trade', excluded:['Residence'], note:'A trading post on the dunes. Raise a caravanserai for the caravans.'}
 };
 WORLD.land.forEach(l=>{ const ex=PARCELS.find(p=>p.id===l.id);
@@ -1489,8 +1489,8 @@ const SERVICES = {
   xcool:{verb:'Attend a workshop on territorial law', note:'Learning here makes the law and role of every territory known to you.'},
   librariux:{verb:'Read in the library', note:'Works here carry creator rights. Publishing opens later.'},
   artex:{verb:'Visit the exhibition', note:'Exhibiting and selling your own work opens later.'},
-  muxum:{verb:'Visit the collection', note:'Xlanders have a ticket discount in the concept. The entry price is TBD, so visits are free in this sandbox.'},
-  cinex:{verb:'Watch a screening', note:'Citizen benefits apply in the concept; exact terms are TBD.'},
+  muxum:{verb:'Visit the collection', note:'Xlanders have a ticket discount in the concept. The entry price is not decided yet, so visits are free in this sandbox.'},
+  cinex:{verb:'Watch a screening', note:'Citizen benefits apply in the concept; exact terms are not decided yet.'},
   conxert:{verb:'Listen in the music archive', note:'Live concerts open later.'},
   exes:{verb:'Visit the exhibition', note:'Non-artistic digital assets on display.'},
   parx:{verb:'Join a conversation in the park', note:'The public square of Xland.'},
@@ -3170,7 +3170,7 @@ function viewWallet(){
     ${serverMode?`<div class="wallet-status glass"><svg viewBox="0 0 36 36" aria-hidden="true"><use href="#xs-${wallet.err?'restricted':'open'}"/></svg><p class="meta" style="margin:0"><b>Official balances kept by xland.world.</b> ${wallet.err?esc(wallet.err):state.walletAt?`Checked ${new Date(state.walletAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}${(state.outbox||[]).length?`, ${state.outbox.length} change${state.outbox.length>1?'s':''} on the way`:''}.`:'Connecting…'}${(state.walletLog||[]).length?` ${state.walletLog.length} change${state.walletLog.length>1?'s were':' was'} not accepted by the server; the wallet follows the server.`:''}</p></div>`:''}
     <div class="assets">${ASSETS.map(a=>`<div class="asset glass"><div class="asset-head"><b>${a.sym}</b><span class="meta">${esc(a.type)}, ${esc(a.domain)}</span></div>
       <div class="asset-amt">${fmtAmt(state.bal[a.id]||'0')}</div>${provenance(a.id)}${BigInt(state.locked[a.id]||'0')>0n?`<p class="meta">Locked: ${fmtAmt(state.locked[a.id])} ${a.sym}</p>`:''}<p class="meta">${esc(a.use)}</p><p class="asset-how">${esc(a.how)}</p></div>`).join('')}</div>
-    ${state.items.length?`<h2 class="display" style="font-size:1.7rem;margin:3rem 0 1rem">Rare assets</h2><ul class="plain">${state.items.map(i=>`<li><b>${esc(i.name)}</b> <span class="meta">${esc(i.from)}, ${fmtDate(i.at)}</span></li>`).join('')}</ul><p class="meta faint">Final NFT classes and rarity names are TBD in the canon.</p>`:''}
+    ${state.items.length?`<h2 class="display" style="font-size:1.7rem;margin:3rem 0 1rem">Rare assets</h2><ul class="plain">${state.items.map(i=>`<li><b>${esc(i.name)}</b> <span class="meta">${esc(i.from)}, ${fmtDate(i.at)}</span></li>`).join('')}</ul><p class="meta faint">Final NFT classes and rarity names are not decided yet.</p>`:''}
     ${state.rentals.length?`<h2 class="display" style="font-size:1.7rem;margin:3rem 0 1rem">Rentals</h2><ul class="plain">${state.rentals.map(r=>`<li><b>${esc(PL[r.place].name)}</b> <span class="meta">until ${fmtDate(r.end)}</span></li>`).join('')}</ul>`:''}
     <h2 class="display" style="font-size:1.7rem;margin:3rem 0 1rem">Transaction history</h2>
     ${rows.length?`<ol class="ledger-list">${rows.filter(e=>e.actor!=='system').map(e=>{ const d=e.event==='CONSUME'?-BigInt(e.qty):BigInt(e.delta); return `<li><div><b>${esc(e.reason)}</b><span class="meta">${fmtDate(e.at)}. ${esc(e.event||'')}${e.to&&e.to!=='player'?' to '+esc(e.to):''}${e.from&&e.from!=='player'?' from '+esc(e.from):''}</span></div><span class="amt ${d<0n?'neg':'pos'}">${d<0n?'':'+'}${fmtAmt(e.delta)} ${AS[e.asset].sym}</span></li>`; }).join('')}</ol>`:'<p class="meta">No transactions yet.</p>'}
@@ -3219,7 +3219,7 @@ function capabilities(){ const s=state, out=[], cap=(n,ok,why,go)=>out.push({n,o
   cap('Sell to citizens', !!s.shop&&shopIsOpen(), !s.shop?'Build a shop with QuarX in an open territory: Plaxa, a farm stand, a green stall, a trading post or a lodge.':!shopIsOpen()?'Your Shoppex lease has ended.':`${s.shop.name} is open in ${R[shopT(s)].name}.`, s.shop?'#/place/'+SHOP_TERR[shopT(s)].place:'#/place/plaxa');
   cap('Construct', !s.builds.length&&lawOn('permit-special')&&q>=quarxCostU(SIM.monumentQuarx), s.builds.length?'Your Special Building is complete.':!lawOn('permit-special')?'Needs a passed motion at CompleX.':q<quarxCostU(SIM.monumentQuarx)?'Needs QuarX from Xalp.':'Ready at the Civic plaza.', '#/place/civicsite');
   cap('Use institutions', !!s.passport, s.passport?'Institutions open to Hotex Guests and above.':'Needs a passport.', '#/place/xcool');
-  cap('Govern', eligibleToVote(), eligibleToVote()?'Eligible under sandbox rules. Lex thresholds and vote weight remain TBD.':'Needs residency under sandbox rules. Lex rules are TBD.', '#/place/complex');
+  cap('Govern', eligibleToVote(), eligibleToVote()?'Eligible under sandbox rules. Lex thresholds and vote weight remain TBD.':'Needs residency under sandbox rules. Lex rules are not decided yet.', '#/place/complex');
   return out; }
 function rolesOf(){ const s=state, r=[]; if(s.ledger.some(e=>e.event==='PRODUCTION')) r.push('Producer'); if(s.ledger.some(e=>e.event==='SWAP'||e.event==='MARKET')) r.push('Trader'); if(s.shop) r.push('Merchant'); if(s.builds.length) r.push('Builder');
   if(s.homes.length||s.rentals.length||s.items.length) r.push('Property holder'); if(Object.keys(s.services).length||s.attended.length||s.proposals.some(p=>p.myVote)) r.push('Civic participant'); if(s.visited.length>=4) r.push('Explorer'); return r; }
@@ -3245,7 +3245,7 @@ function viewProfile(){
       ${mrz(s.handle,s.passportId,identityName())}
     </div>
     <div class="grid2" style="margin-top:1.2rem">
-      <div class="card glass"><h2>Residence</h2>${h?`<dl class="kv"><dt>Anchor</dt><dd><a class="link" href="#/parcel/${h.parcel||'XIM-R-01'}">Homax on ${h.parcel||'XIM-R-01'}</a>, ${esc(R[h.region].name)}</dd><dt>Since</dt><dd>${fmtDate(h.at)}</dd><dt>Status</dt><dd>Active</dd><dt>Rights</dt><dd>Residence; citizenship anchor; private gallery (Preview)</dd><dt>Constraints</dt><dd>No resale below acquisition + 1 BuX</dd></dl><p class="meta">Residence does not automatically grant citizenship; the threshold is TBD.</p>`:`<p class="meta">No residence yet. Homax is the residential path to citizenship.</p><a class="btn btn-quiet" href="#/place/homax">Find a Homax</a>`}</div>
+      <div class="card glass"><h2>Residence</h2>${h?`<dl class="kv"><dt>Anchor</dt><dd><a class="link" href="#/parcel/${h.parcel||'XIM-R-01'}">Homax on ${h.parcel||'XIM-R-01'}</a>, ${esc(R[h.region].name)}</dd><dt>Since</dt><dd>${fmtDate(h.at)}</dd><dt>Status</dt><dd>Active</dd><dt>Rights</dt><dd>Residence; citizenship anchor; private gallery (Preview)</dd><dt>Constraints</dt><dd>No resale below acquisition + 1 BuX</dd></dl><p class="meta">Residence does not automatically grant citizenship; the threshold is not decided yet.</p>`:`<p class="meta">No residence yet. Homax is the residential path to citizenship.</p><a class="btn btn-quiet" href="#/place/homax">Find a Homax</a>`}</div>
       <div class="card glass"><h2>Property and rights</h2><ul class="plain">${(s.rights||[]).filter(r=>r.status==='active').map(r=>`<li><a class="link" href="#/parcel/${r.parcel}"><b>${PBY[r.parcel]?landWord(PBY[r.parcel]):'Parcel'} ${r.parcel}</b></a> <span class="meta">${esc(R[r.territory].name)}</span><br><span class="meta">${esc(r.rights.join(', '))}</span></li>`).join('')}${s.buildings.map(b=>`<li><b>${esc(BUILDING_DEFS[b.def].name)}</b> on ${b.parcel}<br><span class="meta">${esc(BUILDING_DEFS[b.def].operation)}</span></li>`).join('')}${s.rentals.filter(r=>r.end>Date.now()).map(r=>`<li><b>${esc(PL[r.place].name)}</b><br><span class="meta">Use right until ${fmtDate(r.end)}</span></li>`).join('')}${s.items.map(i=>`<li><b>${esc(i.name)}</b><br><span class="meta">Rare asset, ${esc(i.from)}</span></li>`).join('')||(h?'':'<li class="meta">No rights held yet.</li>')}</ul></div>
       <div class="card glass span2"><h2>What you can do now</h2><ul class="checks pp-checks" style="margin:0">${capabilities().map(c=>`<li class="${c.ok?'ok':'no'}"><b>${esc(c.n)}</b><br><span class="meta">${esc(c.why)}</span>${c.go?` <a class="link link-muted" href="${c.go}">Go</a>`:''}</li>`).join('')}</ul></div>
       <div class="card glass span2"><h2>Loremarks</h2><p class="meta" style="margin:-.4rem 0 .8rem">Soulbound marks of what you have done. They can never be sold and carry no financial value.</p><div class="achs">${ACH.map(a=>{ const got=s.ach.includes(a.id); return `<div class="ach ${got?'got':''}"><b>${esc(a.name)}</b><span>${esc(a.crit)}</span>${got?`<button class="link" data-act="title" data-v="${s.title===a.id?'':a.id}">${s.title===a.id?'Remove title':'Use as title'}</button>`:''}</div>`; }).join('')}</div></div>
@@ -3459,7 +3459,7 @@ function actQuarx(){
   const g=presence('xalp'); if(g) return g;
   const m=state.mine, left=quarxCap()-minedToday();
   if(!m){ return `<p class="meta" style="margin-bottom:.6rem"><b>${season().name}.</b> ${season().id==='cold'?'Seams take 30% longer while the frost holds.':'Seams are at their easiest.'} Seasons turn every week.</p><h2 class="act-h">Work a seam</h2><p class="meta">Extraction difficulty varies with the mountain, so each seam takes between ${fmtSecs(SIM.quarx.minSecs)} and ${fmtSecs(SIM.quarx.maxSecs)}. Each seam yields ${SIM.quarx.out} QuarX.${expTag}</p>
-    <p class="meta" style="margin-top:.6rem">Extraction capacity left today: <b>${Math.max(0,left)} of ${quarxCap()}</b>. The real issuance formula is TBD, so capacity stays limited and configurable.</p>
+    <p class="meta" style="margin-top:.6rem">Extraction capacity left today: <b>${Math.max(0,left)} of ${quarxCap()}</b>. The real issuance formula is not decided yet, so capacity stays limited and configurable.</p>
     ${left>0?`<button class="btn btn-primary" style="margin-top:1.2rem" data-act="mine-start">Mine QuarX</button>`:`<div class="lawcard" style="margin-top:1rem"><b>Capacity reached</b><p>Today's extraction capacity at this site is used up. QuarX must stay scarce.</p></div>`}${worldMiningHTML()}`; }
   const done=Date.now()>=m.end, diff=(m.end-m.start)/1000>95?'Hard seam':'Workable seam', out=m.reward?fmtAmt(BigInt(m.reward)):SIM.quarx.out;
   return `<h2 class="act-h">${diff}</h2>${done?`<button class="btn btn-gold" data-act="mine-claim">Collect ${out} QuarX</button>`:timerBar(m.start,m.end,'Extracting QuarX.')}${worldMiningHTML()}`;
@@ -3526,8 +3526,8 @@ function viewParcel(id){
       act+= mine.listing?`<p class="meta" style="margin-top:1.2rem">Listed for ${fmtAmt(mine.listing.price)} BuX.${serverMode?` Every citizen sees it on the map${(state.buildings||[]).some(x=>x.parcel===id)?', with what stands here':''}; when one buys, the land office pays you${flipFeeBps(Date.now()-mine.startAt)?` less the ${flipFeeBps(Date.now()-mine.startAt)/100}% anti-flip fee`:''}. Nothing can be built here while it is listed.`:' No buyers are simulated yet.'} <button class="link" data-act="parcel-unlist" data-id="${id}">Withdraw</button></p>`
         :`<div class="swap-row" style="margin-top:1.2rem"><label class="meta" for="pc-price">Asking price (BuX)${fl?`, minimum ${fmtAmt(fl)} under local law`:''}</label><input class="input" id="pc-price" inputmode="decimal"></div><button class="btn btn-quiet" data-act="parcel-list" data-id="${id}">List for sale</button>`; }
   } else if(av==='AVAILABLE'){
-    act=`<h2 class="act-h">Acquire</h2><ul class="checks"><li class="${state.passport?'ok':'no'}">Passport</li><li class="${here(pp.t)?'ok':'no'}">On site in ${esc(r.name)}</li><li class="${BigInt(state.bal.bux)>=BigInt(pp.price)*UNIT?'ok':'no'}">Simulated terms: ${pp.price} BuX, paid to the ${esc(r.name)} treasury</li></ul>
-      <div class="btn-row"><button class="btn btn-gold" data-act="parcel-buy" data-id="${id}">Acquire ${landWord(pp).toLowerCase()} ${id}</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
+    act=`<h2 class="act-h">Buy this ${landWord(pp).toLowerCase()}</h2><ul class="checks"><li class="${state.passport?'ok':'no'}">Passport</li><li class="${here(pp.t)?'ok':'no'}">On site in ${esc(r.name)}</li><li class="${BigInt(state.bal.bux)>=BigInt(pp.price)*UNIT?'ok':'no'}">Price: ${pp.price} BuX of practice money, paid to the ${esc(r.name)} treasury</li></ul>
+      <div class="btn-row"><button class="btn btn-gold" data-act="parcel-buy" data-id="${id}">Buy for ${pp.price} BuX</button>${here(pp.t)?'':`<button class="link" data-act="travel" data-id="${pp.t}">Travel to ${esc(r.name)}</button>`}</div>`;
   } else if(av==='LEASE ONLY') act=`<h2 class="act-h">Lease only</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/resort">Go to the resort lodges</a>`;
   else if(id==='XET-C-01') act=`<h2 class="act-h">Public site</h2><p class="meta">${esc(pp.note)}</p><a class="btn btn-quiet" href="#/place/civicsite">Go to the Civic plaza</a>`;
   else if(lotState(pp)==='listed'){ const cl=social.claims[id], o=othersOn(id), ls=listingOf(id), on=here(pp.t), funds=BigInt(state.bal.bux)>=BigInt(ls.price)*UNIT, capOk=!pp.lot||heldLotsIn(state,pp.t)<SIM.lotCapPerTerritory;
@@ -3538,11 +3538,11 @@ function viewParcel(id){
   else if(lotState(pp)==='held'){ const cl=social.claims[id], o=othersOn(id);
     act=`<h2 class="act-h">Held by ${esc(cl.handle||'another citizen')}</h2><p class="meta">${o?`Standing here: ${o.kind==='scaffold'?`a ${esc((BUILDING_DEFS[o.def]||{}).name||'building')} under construction`:`a ${esc((BUILDING_DEFS[o.kind]||{}).name||'building')}${o.cond!=null?`, condition ${o.cond}%`:''}`}.`:'Nothing has been built here yet.'} ${esc(pp.note||'')}</p>${(pp.builds||[]).length?`<p class="meta" style="margin-top:.6rem">${lotsIn(pp.t).filter(x=>lotState(x)==='free').length} lots are still free in ${esc(r.name)}. <a class="link" href="#/world" data-act="select" data-id="${pp.t}">Find one on the map</a></p>`:''}`; }
   else act=`<h2 class="act-h">${av}</h2><p class="meta">${esc(pp.note||'')}</p>`;
-  return `<article class="page fade-in"><a class="back" href="#/region/${r.id}">${ICON.back} ${esc(r.name)}</a>${eventBanner(pp.t)}
+  return `<article class="page fade-in act-first"><a class="back" href="#/region/${r.id}">${ICON.back} ${esc(r.name)}</a>${eventBanner(pp.t)}
     <div class="region-hero"><div><p class="dist-tag" style="--c:${pp.d?DISTRICTS[pp.d].c:'#888'}"><i></i>${pp.d?esc(DISTRICTS[pp.d].name)+', ':''}${esc(r.name)}</p>
       <h1 class="display lot-h1">${landWord(pp)} ${id}</h1><p>${parcelBadge(pp)}</p>
-      <dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${pp.zoning.join(', ')}</dd><dt>Area</dt><dd>TBD</dd><dt>Territory law</dt><dd>${esc(TERR[pp.t].tax.note)}${TERR[pp.t].resaleFloor?` Resale floor: acquisition + ${TERR[pp.t].resaleFloor.deltaBuX} BuX${TERR[pp.t].hardship?', rising with time held':''}.`:''}</dd>${pp.building?`<dt>Building</dt><dd>Homax (residential)</dd>`:''}</dl>
-      <div class="rights"><div><h3>Rights granted</h3><ul class="plain">${(pp.rights.length?pp.rights:['None']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><h3>Not granted</h3><ul class="plain">${(pp.excluded.length?pp.excluded:['Nothing listed']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div></div>
+      <div class="lot-facts"><dl class="kv" style="margin-top:1rem"><dt>Zoning</dt><dd>${pp.zoning.join(', ')}</dd><dt>Territory law</dt><dd>${esc(TERR[pp.t].tax.note)}${TERR[pp.t].resaleFloor?` Resale floor: acquisition + ${TERR[pp.t].resaleFloor.deltaBuX} BuX${TERR[pp.t].hardship?', rising with time held':''}.`:''}</dd>${pp.building?`<dt>Building</dt><dd>Homax (residential)</dd>`:''}</dl>
+      <div class="rights"><div><h3>Rights granted</h3><ul class="plain">${(pp.rights.length?pp.rights:['None']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><h3>Not granted</h3><ul class="plain">${(pp.excluded.length?pp.excluded:['Nothing listed']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div></div></div>
       <div class="mini scene" data-scene="region" data-focus="${pp.t}" data-point="${pp.at[0]},${pp.at[1]}" aria-hidden="true"></div></div>
     <section class="activity glass" id="activity">${act}<div id="law-out"></div></section>
     <p class="meta faint" style="margin-top:1rem">Simulated ownership only. No real tokenization, custody or real-estate claim.</p></article>`;
@@ -3582,7 +3582,7 @@ function actConstruct(){
     <ul class="checks"><li class="ok">Location: Civic plaza, Xetropolitan</li>
     <li class="${ok?'ok':'no'}">QuarX: ${fmtAmt(need)} required, you hold ${fmtAmt(q)}${expTag}</li>
     <li class="${lawOn('permit-special')?'ok':'no'}">Governance permission: ${lawOn('permit-special')?'approved by vote at CompleX':'needs a passed motion at CompleX'}</li>
-    <li class="pending">Lex burn: amount TBD in the canon, so nothing is burned yet<span class="tag tag-tbd">TBD</span></li></ul>
+    <li class="pending">Lex burn: amount not decided yet, so nothing is burned yet<span class="tag tag-tbd">TBD</span></li></ul>
     <div class="swap-row"><label class="meta" for="bd-name">Name of the building</label><input class="input" id="bd-name" maxlength="32" dir="auto" placeholder="Monument of the First Settlers"></div>
     <button class="btn btn-gold" data-act="build-start" ${ok?'':'disabled'}>Begin construction</button>
     ${hasQ?'':`<p class="meta" style="margin-top:.8rem">Missing QuarX. <a class="link" href="#/place/quarx">Mine it in Xalp</a> or <a class="link" href="#/place/forgex">trade for it at Forgex</a>.</p>`}
@@ -4086,7 +4086,7 @@ function actAssembly(){
   const types=PTYPES.concat(repealTypes(state)).filter(t=>!state.proposals.some(p=>p.type===t.id&&!['REJECTED','FAILED_EXECUTION'].includes(p.status)) || t.id.startsWith('repeal-'));
   const laws=state.laws||[];
   return `<h2 class="act-h">The Xiberal Assembly</h2><p class="meta">The civilization's deliberative institution, seated at CompleX. Proposals are typed and change the world only through allowlisted handlers, after a vote, a tally and a timelock.</p>
-    <details class="gov-box"><summary><b>Your eligibility</b> (policy ${GOV.policyVersion})</summary><ul class="checks">${caps.map(([c,ok,why])=>`<li class="${ok?'ok':'no'}"><code>${c}</code> ${esc(why)}</li>`).join('')}</ul><p class="meta">Quorum ${GOV.sandboxQuorum} (sandbox), simple majority of yes over no. Deliberation ${GOV.discussSecs}s, voting ${GOV.votingSecs}s, timelock ${GOV.timelockSecs}s: simulation values. Real Lex rules, quorum and thresholds are TBD.</p></details>
+    <details class="gov-box"><summary><b>Your eligibility</b> (policy ${GOV.policyVersion})</summary><ul class="checks">${caps.map(([c,ok,why])=>`<li class="${ok?'ok':'no'}"><code>${c}</code> ${esc(why)}</li>`).join('')}</ul><p class="meta">Quorum ${GOV.sandboxQuorum} (sandbox), simple majority of yes over no. Deliberation ${GOV.discussSecs}s, voting ${GOV.votingSecs}s, timelock ${GOV.timelockSecs}s: simulation values. Real Lex rules, quorum and thresholds are not decided yet.</p></details>
     ${open.length?`<h3 style="margin:1.4rem 0 .4rem">Open proposals</h3><ol class="motions">${open.map(pcard).join('')}</ol>`:''}
     ${canDraft?(dr?`<div class="gov-box glass" style="margin-top:1.4rem"><span class="mstate">${dr.stage==='REVIEW'?'Review':'Draft'}</span><h3 style="margin:.4rem 0">${esc(ptypeOf(dr.type).title)}</h3>
         <dl class="kv"><dt>Current</dt><dd>${esc(HANDLERS[ptypeOf(dr.type).handler].current(state,ptypeOf(dr.type).arg))}</dd><dt>Proposed</dt><dd>${esc(HANDLERS[ptypeOf(dr.type).handler].proposed(state,ptypeOf(dr.type).arg))}</dd><dt>Authority</dt><dd>${esc(ptypeOf(dr.type).authority)}</dd></dl>
@@ -4119,7 +4119,7 @@ function viewPlace(pid){
   if(!state.discovered.includes(pid)) state.discovered.push(pid);
   if(state.passport && state.currentRegion===q.region && !state.placeVisits.includes(pid)){ state.placeVisits.push(pid); emit('LANDMARK_VISITED',{place:pid}); }
   save();
-  return `<article class="page fade-in">
+  return `<article class="page fade-in act-first">
     <a class="back" href="#/region/${r.id}">${ICON.back} ${esc(r.name)}</a>
     <div class="region-hero">
       <div><p class="dist-tag" style="--c:${d.c}"><i></i>${esc(d.name)}, ${esc(r.name)}</p>
